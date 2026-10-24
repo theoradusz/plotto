@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>plotto in the browser</title>
+<!-- Serve the repo over HTTP (python3 -m http.server), then open http://localhost:8000/examples/web/. -->
+<script type="importmap">
+{ "imports": {
+  "d3": "https://cdn.jsdelivr.net/npm/d3@7.9.0/+esm",
+  "@observablehq/plot": "https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6.17/+esm"
+} }
+</script>
+<style>
+  body { font: 14px/1.5 Helvetica, Arial, sans-serif; margin: 24px; color: #1f2328; }
+  section { max-width: 960px; margin-bottom: 32px; }
+  h2 { font: 600 15px ui-monospace, monospace; margin: 0 0 6px; }
+</style>
+</head>
+<body>
+<h1>plotto in the browser</h1>
+<p>The same examples as the Python gallery, built with the JavaScript builder from row objects.</p>
+<div id="examples"></div>
+<script type="module">
+  import { draw } from "../../src/index.js";
+  import { DATASETS, EXAMPLES, load } from "./examples.js";
+
+  const data = Object.fromEntries(await Promise.all(DATASETS.map(async (n) => [n, await load(n)])));
+  for (const [name, example] of Object.entries(EXAMPLES)) {
+    const section = document.createElement("section");
+    section.innerHTML = `<h2>${name}</h2><div></div>`;
+    document.getElementById("examples").append(section);
+    draw(example(data), section.lastChild, { interactive: true });
+  }
+  window.ready = true;
+</script>
+</body>
+</html>

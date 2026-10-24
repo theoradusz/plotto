@@ -1,0 +1,16 @@
+# Lint settings for the Python files of the repo. The package itself is python/pyproject.toml.
+[tool.ruff]
+line-length = 140
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.black]
+line-length = 140
+
+[tool.ruff.lint.isort]
+known-first-party = ["plotto", "gallery"]
+
+[tool.ruff.lint.per-file-ignores]
+"examples/build_site.py" = ["E501"]  # the HTML page template

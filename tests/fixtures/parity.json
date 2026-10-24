@@ -1,0 +1,349 @@
+{
+  "rows": [
+    {
+      "t": 1,
+      "v": 0.123456789,
+      "g": "a",
+      "h": "x",
+      "n": 3
+    },
+    {
+      "t": 2,
+      "v": 2.5,
+      "g": "b",
+      "h": "x",
+      "n": null
+    },
+    {
+      "t": 3,
+      "v": -1,
+      "g": "a",
+      "h": "y",
+      "n": 5
+    },
+    {
+      "t": 4,
+      "v": 12345.678,
+      "g": "b",
+      "h": "y",
+      "n": 7
+    }
+  ],
+  "cases": [
+    {
+      "name": "line with constant reference",
+      "calls": [
+        [
+          "plot",
+          [],
+          {
+            "x": "t",
+            "y": "v",
+            "color": "g"
+          }
+        ],
+        [
+          "line",
+          [],
+          {
+            "size": 2
+          }
+        ],
+        [
+          "hline",
+          [],
+          {
+            "y": 0,
+            "color": "muted",
+            "dash": "dashed"
+          }
+        ]
+      ]
+    },
+    {
+      "name": "facet, scales, labels and theme",
+      "calls": [
+        [
+          "plot",
+          [],
+          {
+            "x": "t",
+            "y": "v"
+          }
+        ],
+        [
+          "point",
+          [],
+          {
+            "color": "g",
+            "jitter": 0.3
+          }
+        ],
+        [
+          "facet",
+          [
+            "h"
+          ],
+          {
+            "free": "y",
+            "ncol": 1
+          }
+        ],
+        [
+          "x",
+          [],
+          {
+            "type": "log",
+            "limits": [
+              1,
+              10
+            ]
+          }
+        ],
+        [
+          "color",
+          [],
+          {
+            "values": {
+              "a": "pink",
+              "b": "blue"
+            }
+          }
+        ],
+        [
+          "labels",
+          [],
+          {
+            "title": "T",
+            "y": "value"
+          }
+        ],
+        [
+          "theme",
+          [
+            "paper"
+          ],
+          {
+            "legend": "bottom",
+            "width": 700
+          }
+        ]
+      ]
+    },
+    {
+      "name": "grid and summary",
+      "calls": [
+        [
+          "plot",
+          [],
+          {
+            "x": "t",
+            "y": "n"
+          }
+        ],
+        [
+          "line",
+          [],
+          {
+            "summary": "median"
+          }
+        ],
+        [
+          "grid",
+          [],
+          {
+            "rows": "g",
+            "cols": "h"
+          }
+        ]
+      ]
+    },
+    {
+      "name": "text, band and tile",
+      "calls": [
+        [
+          "plot",
+          [],
+          {
+            "x": "t",
+            "y": "v"
+          }
+        ],
+        [
+          "tile",
+          [],
+          {
+            "color": "n",
+            "tooltip": "g"
+          }
+        ],
+        [
+          "band",
+          [],
+          {
+            "xmin": 1,
+            "xmax": 2,
+            "alpha": 0.2
+          }
+        ],
+        [
+          "text",
+          [],
+          {
+            "label": "peak",
+            "x": 3,
+            "y": 1
+          }
+        ]
+      ]
+    },
+    {
+      "name": "new layers and format",
+      "calls": [
+        [
+          "plot",
+          [],
+          {
+            "x": "t",
+            "y": "v",
+            "color": "g"
+          }
+        ],
+        [
+          "bar",
+          [],
+          {
+            "position": "dodge"
+          }
+        ],
+        [
+          "hist",
+          [],
+          {
+            "bins": 12,
+            "density": true
+          }
+        ],
+        [
+          "smooth",
+          [],
+          {
+            "method": "loess",
+            "span": 0.5
+          }
+        ],
+        [
+          "step",
+          [],
+          {}
+        ],
+        [
+          "area",
+          [],
+          {
+            "alpha": 0.4
+          }
+        ],
+        [
+          "ribbon",
+          [],
+          {
+            "ymin": "v",
+            "ymax": "n"
+          }
+        ],
+        [
+          "density",
+          [],
+          {}
+        ],
+        [
+          "theme",
+          [
+            "wota"
+          ],
+          {
+            "format": "slide",
+            "height": 500
+          }
+        ]
+      ]
+    },
+    {
+      "name": "limits, palette and scheme",
+      "calls": [
+        [
+          "plot",
+          [],
+          {
+            "x": "t",
+            "y": "v",
+            "color": "g"
+          }
+        ],
+        [
+          "point",
+          [],
+          {}
+        ],
+        [
+          "y",
+          [],
+          {
+            "limits": [
+              0,
+              null
+            ]
+          }
+        ],
+        [
+          "color",
+          [],
+          {
+            "palette": "aizome"
+          }
+        ],
+        [
+          "labels",
+          [],
+          {
+            "title": "T",
+            "caption": "c",
+            "x": null
+          }
+        ]
+      ]
+    },
+    {
+      "name": "continuous color scheme with mid",
+      "calls": [
+        [
+          "plot",
+          [],
+          {
+            "x": "t",
+            "y": "v",
+            "color": "n"
+          }
+        ],
+        [
+          "tile",
+          [],
+          {}
+        ],
+        [
+          "color",
+          [],
+          {
+            "scheme": "aiaka",
+            "mid": 0,
+            "limits": [
+              -1,
+              8
+            ]
+          }
+        ]
+      ]
+    }
+  ]
+}

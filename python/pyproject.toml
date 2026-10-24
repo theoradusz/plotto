@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "plotto"
+version = "0.1.0"
+description = "Grammar-of-graphics plots for notebooks, the web UI and slides (Python builder; drawing in ../src)."
+requires-python = ">=3.12"
+dependencies = ["pandas>=2", "numpy"]
+
+[project.optional-dependencies]
+test = ["pytest", "ruff", "black", "nbconvert", "ipykernel"]
+
+[tool.setuptools]
+packages = ["plotto"]

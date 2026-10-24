@@ -1,0 +1,150 @@
+{
+  "styles": {
+    "pastel": {
+      "font": "Helvetica, Arial, 'Liberation Sans', sans-serif",
+      "metrics": "arial",
+      "background": "#FFFEFB",
+      "ink": "#3A3631",
+      "muted": "#7A736A",
+      "grid": "#ECE8E1",
+      "gridMinor": "#F6F3EE",
+      "tick": "#D6D0C6",
+      "strip": "#F4F0E9",
+      "accent": "#3E8A99",
+      "palette": "pastel",
+      "scheme": "ai",
+      "colors": {
+        "blue": "#7AA6DA",
+        "orange": "#EF977F",
+        "green": "#7DB89A",
+        "purple": "#A79BD6",
+        "pink": "#E48FAE",
+        "yellow": "#DDB459",
+        "teal": "#63B7C1",
+        "red": "#CF7468",
+        "brown": "#BB9C84",
+        "gray": "#97A1AD"
+      },
+      "weight": 1.25
+    },
+    "wota": {
+      "font": "'M PLUS 1p', sans-serif",
+      "metrics": "mplus",
+      "ink": "#333333",
+      "muted": "#666666",
+      "grid": "#D9D9D9",
+      "gridMinor": "#EFEFEF",
+      "tick": "#BBBBBB",
+      "strip": "#EEF1FA",
+      "accent": "#5C6BC0",
+      "palette": "wota",
+      "scheme": "sakura",
+      "colors": {
+        "pink": "#E4007F",
+        "blue": "#5C6BC0",
+        "teal": "#00A3A3",
+        "orange": "#F5A623",
+        "purple": "#8E44AD",
+        "gray": "#7F7F7F",
+        "green": "#3BA55C",
+        "red": "#D7263D",
+        "yellow": "#F2C14E",
+        "brown": "#8D6E63"
+      },
+      "weight": 1,
+      "background": "#FFFFFF"
+    },
+    "paper": {
+      "ink": "#000000",
+      "muted": "#333333",
+      "grid": "#E6E6E6",
+      "gridMinor": "#F5F5F5",
+      "tick": "#8C8C8C",
+      "strip": "#EBEBEB",
+      "accent": "#0072B2",
+      "palette": ["blue", "orange", "green", "pink", "yellow", "teal", "red", "brown", "purple", "gray"],
+      "scheme": "viridis",
+      "colors": {
+        "blue": "#0072B2",
+        "orange": "#E69F00",
+        "green": "#009E73",
+        "pink": "#CC79A7",
+        "yellow": "#F0E442",
+        "teal": "#56B4E9",
+        "red": "#D55E00",
+        "brown": "#8C6D31",
+        "purple": "#6A3D9A",
+        "gray": "#7F7F7F"
+      },
+      "weight": 1,
+      "background": "#FFFFFF"
+    },
+    "dark": {
+      "background": "#16181D",
+      "ink": "#E8EAED",
+      "muted": "#A6ABB3",
+      "grid": "#2E323A",
+      "gridMinor": "#22252B",
+      "tick": "#4F5560",
+      "strip": "#252933",
+      "accent": "#8AB4F8",
+      "palette": ["blue", "orange", "green", "purple", "pink", "yellow", "teal", "red", "brown", "gray"],
+      "scheme": "yuhi",
+      "colors": {
+        "blue": "#8AB4F8",
+        "orange": "#FBA94C",
+        "green": "#81C995",
+        "purple": "#C58AF9",
+        "pink": "#FF8BCB",
+        "yellow": "#FDD663",
+        "teal": "#78D9D3",
+        "red": "#F28B82",
+        "brown": "#C8A27A",
+        "gray": "#9AA0A6"
+      },
+      "weight": 1.15
+    }
+  },
+  "palettes": {
+    "pastel": ["#7AA6DA", "#EF977F", "#7DB89A", "#A79BD6", "#E48FAE", "#DDB459", "#63B7C1", "#CF7468", "#BB9C84", "#97A1AD"],
+    "wota": ["#E4007F", "#5C6BC0", "#00A3A3", "#F5A623", "#8E44AD", "#7F7F7F", "#3BA55C", "#D7263D", "#F2C14E", "#8D6E63"],
+    "sakura": ["#E16B8C", "#5DAC81", "#8B81C3", "#FFB11B", "#7DB9DE", "#F596AA", "#B9887D", "#91AD70"],
+    "aizome": ["#0F2540", "#51A8DD", "#66BAB7", "#656765", "#0D5661", "#A5DEE4", "#7B90D2"],
+    "momiji": ["#CB4042", "#FFB11B", "#6C6A2D", "#6D2E5B", "#ED784A", "#734338", "#C99833"],
+    "tableau": ["#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F", "#EDC948", "#B07AA1", "#FF9DA7", "#9C755F", "#BAB0AC"]
+  },
+  "schemes": {
+    "ai": ["#F4F8F8", "#A5DEE4", "#33A6B8", "#0D5661", "#0F2540"],
+    "sakura": ["#FEF4F4", "#FEDFE1", "#F596AA", "#D05A6E", "#8E354A", "#4A1D30"],
+    "matcha": ["#F8F6E3", "#D7E3B5", "#91AD70", "#5DAC81", "#1B813E", "#0B3B2A"],
+    "yuhi": ["#FFF3D6", "#FFB11B", "#ED784A", "#CB4042", "#6D2E5B", "#26113A"],
+    "sumi": ["#FCFAF2", "#BDC0BA", "#828282", "#434343", "#1C1C1C"],
+    "aiaka": ["#0F2540", "#33A6B8", "#A5DEE4", "#F7F6F0", "#F4A7A0", "#CB4042", "#5C1A1B"]
+  },
+  "formats": {
+    "screen": {
+      "width": 900,
+      "height": 450,
+      "size": 12,
+      "line": 1.5,
+      "point": 2.5,
+      "reflow": true
+    },
+    "report": {
+      "width": 640,
+      "height": 400,
+      "size": 10,
+      "line": 1.2,
+      "point": 2,
+      "reflow": false
+    },
+    "slide": {
+      "width": 1280,
+      "height": 720,
+      "size": 20,
+      "line": 2.5,
+      "point": 4,
+      "reflow": false
+    }
+  }
+}

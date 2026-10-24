@@ -1,0 +1,51 @@
+{
+  "options": {
+    "size": "number",
+    "alpha": "number",
+    "dash": ["solid", "dashed", "dotted", "dashdot"],
+    "jitter": "number",
+    "summary": ["mean", "median", "min", "max", "sum"],
+    "slope": "number",
+    "intercept": "number",
+    "position": ["stack", "dodge", "overlay"],
+    "bins": "number",
+    "density": "boolean",
+    "method": ["lm", "loess"],
+    "span": "number",
+    "band": "boolean"
+  },
+  "layers": {
+    "line": { "channels": ["x", "y", "color", "group", "tooltip"], "options": ["size", "alpha", "dash", "summary"], "requires": ["x", "y"] },
+    "path": { "channels": ["x", "y", "color", "group", "tooltip"], "options": ["size", "alpha", "dash"], "requires": ["x", "y"] },
+    "step": { "channels": ["x", "y", "color", "group", "tooltip"], "options": ["size", "alpha", "dash"], "requires": ["x", "y"] },
+    "point": { "channels": ["x", "y", "color", "tooltip"], "options": ["size", "alpha", "jitter", "summary"], "requires": ["x", "y"] },
+    "bar": { "channels": ["x", "y", "color", "tooltip"], "options": ["alpha", "position"], "requires": ["x", "y"] },
+    "hist": { "channels": ["x", "color"], "options": ["alpha", "bins", "density", "position"], "requires": ["x"] },
+    "density": { "channels": ["x", "color"], "options": ["size", "alpha", "dash"], "requires": ["x"] },
+    "area": { "channels": ["x", "y", "color", "group"], "options": ["alpha", "position"], "requires": ["x", "y"] },
+    "ribbon": { "channels": ["x", "ymin", "ymax", "color", "group"], "options": ["alpha"], "requires": ["x", "ymin", "ymax"] },
+    "smooth": { "channels": ["x", "y", "color"], "options": ["size", "alpha", "dash", "method", "span", "band"], "requires": ["x", "y"] },
+    "hline": { "channels": ["y", "color"], "options": ["size", "alpha", "dash"], "requires": ["y"], "inherit": false },
+    "vline": { "channels": ["x", "color"], "options": ["size", "alpha", "dash"], "requires": ["x"], "inherit": false },
+    "abline": { "channels": ["color"], "options": ["slope", "intercept", "size", "alpha", "dash"], "requires": [], "inherit": false },
+    "segment": { "channels": ["x", "y", "xend", "yend", "color"], "options": ["size", "alpha", "dash"], "requires": ["x", "y", "xend", "yend"] },
+    "rect": { "channels": ["xmin", "xmax", "ymin", "ymax", "color", "tooltip"], "options": ["alpha"], "requires": ["xmin", "xmax", "ymin", "ymax"] },
+    "band": { "channels": ["xmin", "xmax", "ymin", "ymax", "color"], "options": ["alpha"], "requires": [], "inherit": false },
+    "tile": { "channels": ["x", "y", "color", "tooltip"], "options": ["alpha"], "requires": ["x", "y", "color"] },
+    "text": { "channels": ["x", "y", "label", "color"], "options": ["size", "alpha"], "requires": ["x", "y", "label"] },
+    "errorbar": { "channels": ["x", "ymin", "ymax", "color"], "options": ["size", "alpha"], "requires": ["x", "ymin", "ymax"] },
+    "box": { "channels": ["x", "y", "color"], "options": ["alpha"], "requires": ["x", "y"] }
+  },
+  "scales": {
+    "x": ["type", "limits", "format"],
+    "y": ["type", "limits", "format"],
+    "color": ["values", "palette", "scheme", "limits", "mid", "clamp"]
+  },
+  "scaleTypes": ["linear", "log", "time", "category"],
+  "facet": ["free", "ncol"],
+  "grid": ["free"],
+  "free": ["x", "y", "both"],
+  "labels": ["title", "subtitle", "x", "y", "color", "caption"],
+  "theme": ["format", "width", "height", "size", "legend"],
+  "legend": ["right", "bottom", "none"]
+}
