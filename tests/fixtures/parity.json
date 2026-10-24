@@ -344,6 +344,73 @@
           }
         ]
       ]
+    },
+    {
+      "name": "info from a dict",
+      "calls": [
+        [
+          "plot",
+          [],
+          {
+            "x": "t",
+            "y": "v"
+          }
+        ],
+        [
+          "line",
+          [],
+          {}
+        ],
+        [
+          "info",
+          [
+            {
+              "data point": 15,
+              "dose": 0.123456789,
+              "calibrated": true,
+              "batch": null,
+              "location": "hayama"
+            }
+          ],
+          {}
+        ]
+      ]
+    },
+    {
+      "name": "info from pairs, at the bottom",
+      "calls": [
+        [
+          "plot",
+          [],
+          {
+            "x": "t",
+            "y": "v"
+          }
+        ],
+        [
+          "line",
+          [],
+          {}
+        ],
+        [
+          "info",
+          [
+            [
+              [
+                "15",
+                "first"
+              ],
+              [
+                "rate",
+                12345.678
+              ]
+            ]
+          ],
+          {
+            "position": "bottom"
+          }
+        ]
+      ]
     }
   ]
 }

@@ -176,6 +176,47 @@ test("the builder gives specific errors", () => {
   assert.throws(() => base.hist({ density: "yes" }), /density must be true or false/);
 });
 
+const SMALL_INFO = { "data point": 15, location: "hayama", experiment: "cleaning with chlorine" };
+const LARGE_INFO = { ...SMALL_INFO, operator: "T. R.", reactor: "R2", dose: 2.5, date: "2026-10-01", notes: "membrane replaced the day before", calibrated: true, batch: null };
+
+for (const position of ["right", "bottom"]) {
+  test(`info ${position} matches the snapshot`, () => {
+    const svg = renderSVG(base.line().labels({ title: "Water quality" }).info(LARGE_INFO, { position }).spec());
+    assert.match(svg, /class="pt-info"/);
+    snapshot(`info_${position}`, svg);
+  });
+}
+
+test("info goes on the right by default, and at the bottom of a narrow figure", () => {
+  const at = (p, width) => figure(p, { document, width }).info.position;
+  assert.equal(at(base.line().info(SMALL_INFO), 900), "right");
+  assert.equal(at(base.line().info(SMALL_INFO), 480), "bottom");
+  assert.equal(at(base.line().info(SMALL_INFO, { position: "bottom" }), 900), "bottom");
+});
+
+test("a right legend starts below the info card", () => {
+  const f = figure(base.line().info(LARGE_INFO, { position: "right" }), { document });
+  assert.ok(f.layout.legend.y >= f.layout.info.y + f.info.height);
+});
+
+test("info values become text, and entries that do not fit become one more row", () => {
+  const f = figure(base.line().info({ n: 0.1234567, ok: false, none: null }), { document });
+  assert.deepEqual(f.info.columns[0].rows.map((r) => r.lines[0]), ["0.123457", "false", "–"]);
+  const many = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`key ${i}`, i]));
+  const rows = figure(base.line().info(many, { position: "right" }), { document }).info.columns[0].rows;
+  assert.match(rows.at(-1).key, /^\+\d+ more$/);
+});
+
+test("info() checks its entries and keeps the old builder", () => {
+  assert.throws(() => base.info(SMALL_INFO, { position: "left" }), /unknown position "left"/);
+  assert.throws(() => base.info({ date: new Date() }), /Format other values as a string/);
+  assert.throws(() => base.info("hayama"), /entries must be/);
+  const withInfo = base.info([["15", "first"], ["a", 1]]);
+  assert.equal(base.spec().info, undefined);
+  assert.deepEqual(withInfo.spec().info, { entries: [["15", "first"], ["a", 1]], position: "right" });
+  assert.equal(withInfo.info(null).spec().info, undefined);
+});
+
 test("a method returns a new builder and keeps the old one", () => {
   const lines = base.line();
   assert.equal(base.spec().layers.length, 0);

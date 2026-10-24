@@ -47,5 +47,7 @@
   "free": ["x", "y", "both"],
   "labels": ["title", "subtitle", "x", "y", "color", "caption"],
   "theme": ["format", "width", "height", "size", "legend"],
-  "legend": ["right", "bottom", "none"]
+  "legend": ["right", "bottom", "none"],
+  "info": ["position"],
+  "infoPosition": ["right", "bottom"]
 }

@@ -13,7 +13,7 @@ export function plot(rows, mapping = {}) {
     if (!PLOT_CHANNELS.includes(ch)) fail("plot()", "channel", ch, PLOT_CHANNELS);
     needColumn(data[0], col, "plot()");
   }
-  return new Builder({ data, mapping, layers: [], facet: null, scales: {}, labels: {}, theme: { style: "pastel" } });
+  return new Builder({ data, mapping, layers: [], facet: null, scales: {}, labels: {}, info: null, theme: { style: "pastel" } });
 }
 
 class Builder {
@@ -106,6 +106,17 @@ class Builder {
     return this.#with({ labels: { ...this.#s.labels, ...options } });
   }
 
+  // A key/value table about the data or the experiment: info({ location: "hayama" }, { position: "right" }). null removes it.
+  info(entries, options = {}) {
+    checkKeys(options, GRAMMAR.info, "info()");
+    const position = options.position ?? "right";
+    if (!GRAMMAR.infoPosition.includes(position)) fail("info()", "position", position, GRAMMAR.infoPosition);
+    if (entries === null || entries === undefined) return this.#with({ info: null });
+    const pairs = Array.isArray(entries) ? entries : typeof entries === "object" ? Object.entries(entries) : null;
+    if (!pairs) throw new Error("info(): entries must be an object or a list of [key, value] pairs");
+    return this.#with({ info: { entries: pairs.map((pair) => infoEntry(pair)), position } });
+  }
+
   theme(style = "pastel", options = {}) {
     checkKeys(options, GRAMMAR.theme, "theme()");
     if (!(style in THEMES.styles)) fail("theme()", "style", style, Object.keys(THEMES.styles));
@@ -124,7 +135,7 @@ class Builder {
       if (col) used.forEach((set, i) => col in s.data[i].columns && set.add(col));
     }
     const data = s.data.map((t, i) => ({ columns: Object.fromEntries([...used[i]].map((c) => [c, t.columns[c]])) }));
-    return { version: 1, data, mapping: s.mapping, layers: s.layers, facet: s.facet, scales: s.scales, labels: s.labels, theme: s.theme };
+    return { version: 1, data, mapping: s.mapping, layers: s.layers, facet: s.facet, scales: s.scales, labels: s.labels, ...(s.info ? { info: s.info } : {}), theme: s.theme };
   }
 }
 
@@ -159,6 +170,15 @@ function constant(key, value, where, columns) {
   if (key === "color" || key === "label") return value; // spec.js validates the color against the theme
   if (typeof value === "string" && !kind) throw new Error(`${where}: "${value}" is not a column. Columns: ${Object.keys(columns).join(", ")}`);
   return toValue(value);
+}
+
+// One [key, value] entry of info(). Numbers keep 6 significant digits; the renderer writes the value as text.
+function infoEntry(pair) {
+  if (!Array.isArray(pair) || pair.length !== 2 || typeof pair[0] !== "string") throw new Error("info(): each entry must be a [key, value] pair with a string key");
+  const [key, value] = pair;
+  if (value === null || value === undefined || (typeof value === "number" && Number.isNaN(value))) return [key, null];
+  if (!["string", "number", "boolean"].includes(typeof value)) throw new Error(`info(): the value of "${key}" must be a string, a number, a boolean or null. Format other values as a string`);
+  return [key, toValue(value)];
 }
 
 function needColumn(table, col, where) {

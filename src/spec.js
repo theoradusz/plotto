@@ -1,5 +1,5 @@
 // Validates a spec and adds the defaults. This is the only file that knows the defaults.
-// Output: tables, layers with resolved channels ({column} or {value}), facet, scales, labels and theme.
+// Output: tables, layers with resolved channels ({column} or {value}), facet, scales, labels, info and theme.
 import GRAMMAR from "../grammar.json" with { type: "json" };
 import { colorOf, colorTokens, resolveTheme } from "./theme.js";
 
@@ -12,7 +12,8 @@ export function normalize(spec, overrides = {}) {
   if (!layers.length) throw new Error("plotto: the plot has no layers. Add one, for example .line() or .point()");
   const facet = resolveFacet(spec.facet);
   const labels = { ...defaultLabels(layers), ...spec.labels };
-  return { tables, layers, facet, scales: spec.scales ?? {}, labels, theme };
+  const info = spec.info?.entries?.length ? { entries: spec.info.entries, position: spec.info.position ?? "right" } : null;
+  return { tables, layers, facet, scales: spec.scales ?? {}, labels, info, theme };
 }
 
 function toTable({ columns }) {

@@ -26,6 +26,7 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
   "facet": { "wrap": "sensor", "free": "y", "ncol": null },
   "scales": { "x": { "type": "time" }, "color": { "values": { "sensor A": "blue" } } },
   "labels": { "title": "Water quality", "x": null, "y": "W (a.u.)" },
+  "info": { "entries": [["data point", 15], ["location", "hayama"]], "position": "right" },
   "theme": { "style": "pastel", "format": "screen", "legend": "right" }
 }
 ```
@@ -40,6 +41,7 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 | `facet` | `{wrap, free, ncol}`, `{rows, cols, free}` or `null` |
 | `scales` | `x`, `y`: `type`, `limits`, `format`. `color`: `values`, `palette`, `scheme`, `limits`, `mid`, `clamp`. |
 | `labels` | `title`, `subtitle`, `caption`, `x`, `y`, `color`. `null` removes a title. A missing key uses the first mapped column name. |
+| `info` | Optional. `entries`: `[key, value]` pairs in order; a value is a string, a number, a boolean or `null`. `position`: `right` (the default) or `bottom`. |
 | `theme` | `style`, `format`, and the overrides `width`, `height`, `size`, `legend` |
 
 ### Column types
@@ -191,6 +193,21 @@ A style can also list theme color names as its palette: the `paper` and `dark` s
 - Below 560 px of width, a right legend moves to the bottom.
 - The title and the subtitle align left with the panels. They wrap to two lines at most and keep space for the toolbar on the right. The caption is at the bottom left.
 - `src/metrics.js` holds the glyph widths of each style font for the layout. CJK characters are one em wide.
+
+### Info table
+
+`info(entries, position=)` draws facts about the data or the experiment as a key/value table: keys in `muted`, values in `ink`.
+
+| Position | Place | Look |
+|---|---|---|
+| `right` | The right column, above the legend | A card in the `strip` color |
+| `bottom` | Below the panels, above a bottom legend and the caption. The entries flow into 1 to 3 columns. | The same card |
+
+- `right` is the default. Below 560 px of width, it moves to the `bottom`, as the legend does.
+- A value wraps to 3 lines at most. A key takes at most 45% of the table width; a longer key ends with an ellipsis, and its full text is its SVG title.
+- The table takes at most 60% of the figure height (`right`) or 30% (`bottom`). The entries that do not fit become one last row, `+N more`.
+- A number keeps 6 significant digits, as in the data. `null` shows as `–`.
+- Zoom and legend clicks do not change the table.
 
 ## 8. Display and interaction
 
