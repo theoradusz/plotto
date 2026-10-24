@@ -1,26 +1,55 @@
 {
   "name": "plotto",
   "version": "0.1.0",
-  "description": "Grammar-of-graphics plots for notebooks, the web UI and slides, drawn with Observable Plot.",
+  "description": "Grammar-of-graphics plots for notebooks, web pages and slides with one renderer.",
+  "license": "MIT",
+  "homepage": "https://theoradusz.github.io/plotto/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/theoradusz/plotto.git"
+  },
+  "keywords": [
+    "plot",
+    "chart",
+    "grammar-of-graphics",
+    "ggplot",
+    "observable-plot",
+    "svg",
+    "react"
+  ],
   "type": "module",
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js",
     "./react": "./src/Plot.js",
-    "./theme.json": "./theme.json"
+    "./render": "./src/render.mjs",
+    "./theme.json": "./theme.json",
+    "./grammar.json": "./grammar.json"
   },
+  "bin": {
+    "plotto-render": "src/render.mjs"
+  },
+  "files": [
+    "src/",
+    "grammar.json",
+    "theme.json",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "browser-test": "node tests/browser.mjs"
+    "browser-test": "node tests/browser.mjs",
+    "build:python": "node scripts/build_assets.mjs",
+    "prepublishOnly": "npm test"
   },
   "dependencies": {
     "@observablehq/plot": "0.6.17",
-    "d3": "7.9.0"
+    "d3": "7.9.0",
+    "@resvg/resvg-js": "2.6.2",
+    "jsdom": "26.1.0"
   },
   "devDependencies": {
-    "@resvg/resvg-js": "2.6.2",
-    "esbuild": "0.28.2",
-    "jsdom": "26.1.0"
+    "esbuild": "0.28.2"
   },
   "peerDependencies": {
     "react": ">=18"

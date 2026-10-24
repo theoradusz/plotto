@@ -1,0 +1,48 @@
+# Publishes python-plotto to PyPI and plotto to npm when a tag vX.Y.Z is pushed.
+# Setup (once): PyPI trusted publisher for this repo and workflow; repo secret NPM_TOKEN. See README, "Release".
+name: release
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - run: npm ci
+      - run: npm test
+      - name: Verify that the tag, package.json and the Python version agree
+        run: |
+          tag=${GITHUB_REF_NAME#v}
+          test "$tag" = "$(node -p 'require("./package.json").version')"
+          test "$tag" = "$(python -c 'import re; print(re.search(r"__version__ = \"(.+)\"", open("python/plotto/__init__.py").read())[1])')"
+      - run: npm run build:python
+      - run: pip install build && python -m build python --outdir dist
+      - uses: actions/upload-artifact@v4
+        with: { name: dist, path: dist }
+
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions: { id-token: write }
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: dist, path: dist }
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  npm:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions: { id-token: write, contents: read }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, registry-url: "https://registry.npmjs.org" }
+      - run: npm ci
+      - run: npm publish --provenance --access public
+        env: { NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}" }

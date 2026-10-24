@@ -1,16 +1,37 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "plotto"
-version = "0.1.0"
-description = "Grammar-of-graphics plots for notebooks, the web UI and slides (Python builder; drawing in ../src)."
+name = "python-plotto"
+dynamic = ["version"]
+description = "Grammar-of-graphics plots for notebooks, web pages and slides with one renderer."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = ["pandas>=2", "numpy"]
+keywords = ["plot", "chart", "grammar of graphics", "ggplot", "notebook", "visualization"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: Jupyter",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+
+[project.urls]
+Homepage = "https://theoradusz.github.io/plotto/"
+Source = "https://github.com/theoradusz/plotto"
 
 [project.optional-dependencies]
 test = ["pytest", "ruff", "black", "nbconvert", "ipykernel"]
 
 [tool.setuptools]
 packages = ["plotto"]
+
+[tool.setuptools.dynamic]
+version = { attr = "plotto.__version__" }
+
+[tool.setuptools.package-data]
+plotto = ["_assets/*"]

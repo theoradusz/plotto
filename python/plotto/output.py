@@ -1,11 +1,16 @@
-"""Outputs: static SVG, PNG and interactive HTML. One Node process (src/render.mjs --serve) draws them.
+"""Outputs: static SVG, PNG and interactive HTML.
 
-The process starts on the first plot and stays for the life of the kernel, so each plot costs milliseconds.
+The notebook HTML uses the browser bundle (plotto.js) and needs no Node. The static SVG and PNG come from one Node
+process (plotto-render --serve) that starts on the first use and stays for the life of the kernel:
+- in a checkout of the repo (with node_modules), node src/render.mjs;
+- else the npm package plotto of the same version, through npx (downloaded once, then cached).
+Without Node, a notebook plot is live only (no static copy for GitHub), and save() raises an error.
 """
 
 import atexit
 import base64
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -13,8 +18,10 @@ import threading
 import uuid
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]  # tools/plotto
-RENDER = ROOT / "src" / "render.mjs"
+from . import __version__, assets
+
+# The npm package that npx runs outside a checkout. PLOTTO_NPM overrides it (for example a local .tgz, for tests).
+NPM_PACKAGE = os.environ.get("PLOTTO_NPM", f"plotto@{__version__}")
 _lock = threading.Lock()
 _process = None
 _bundle = None
@@ -33,13 +40,21 @@ def _request(op, **params):
     return reply
 
 
+class NodeMissing(RuntimeError):
+    pass
+
+
 def _start():
     node = shutil.which("node")
     if node is None:
-        raise RuntimeError("plotto needs Node.js 20 or later on the PATH")
-    if not (ROOT / "node_modules").exists():
-        raise RuntimeError(f"plotto: run `npm install` in {ROOT}")
-    process = subprocess.Popen([node, str(RENDER), "--serve"], cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        raise NodeMissing("plotto needs Node.js 20 or later on the PATH for static SVG and PNG files (https://nodejs.org)")
+    repo = assets.checkout()
+    if repo is not None:
+        command, cwd = [node, str(repo / "src" / "render.mjs"), "--serve"], repo
+    else:
+        npx = shutil.which("npx") or str(Path(node).with_name("npx"))
+        command, cwd = [npx, "--yes", "--package", NPM_PACKAGE, "plotto-render", "--serve"], None
+    process = subprocess.Popen(command, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
     atexit.register(process.kill)
     return process
 
@@ -70,9 +85,14 @@ def html(spec, interactive=False) -> str:
     """
     global _bundle
     if _bundle is None:
-        _bundle = _request("bundle")["js"]
+        # A checkout bundles the current src/; an installed package uses its packaged bundle.
+        packaged = assets.ASSETS / "plotto.js"
+        _bundle = _request("bundle")["js"] if assets.checkout() or not packaged.exists() else packaged.read_text()
     key = f"pt-{uuid.uuid4().hex[:12]}"
-    static = re.sub(r'width="\d+(\.\d+)?" height="\d+(\.\d+)?"', 'width="100%"', svg(spec), count=1)
+    try:
+        static = re.sub(r'width="\d+(\.\d+)?" height="\d+(\.\d+)?"', 'width="100%"', svg(spec), count=1)
+    except RuntimeError:
+        static = ""  # no Node, or the renderer could not start: the live plot only
     data = json.dumps(spec, allow_nan=False, separators=(",", ":")).replace("</", "<\\/")
     script = _bundle.replace("</script", "<\\/script")
     return (

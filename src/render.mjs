@@ -1,8 +1,10 @@
+#!/usr/bin/env node
 // Static export in Node: spec → SVG (jsdom) → PNG (resvg). The same figure code runs in the browser.
 //   node src/render.mjs spec.json out.svg|out.png [scale]   one file
+//   plotto-render --serve                                     (the npm bin)
 //   node src/render.mjs --serve                              JSON lines on stdin/stdout (python/plotto/output.py)
 import { Resvg } from "@resvg/resvg-js";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
@@ -59,7 +61,8 @@ async function handle(request) {
   throw new Error(`unknown op "${request.op}"`);
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// Run as a command (directly, or through the npm bin link, which is a symlink to this file).
+if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [arg, out, scale] = process.argv.slice(2);
   if (arg === "--serve") {
     for await (const line of createInterface({ input: process.stdin })) {

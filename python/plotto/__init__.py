@@ -1,5 +1,10 @@
-"""plotto: grammar-of-graphics plots for notebooks, the web UI and slides. See tools/plotto/README.md."""
+"""plotto: grammar-of-graphics plots for notebooks, web pages and slides with one renderer.
 
-from .plot import Plot, plot
+https://github.com/theoradusz/plotto
+"""
 
-__all__ = ["Plot", "plot"]
+__version__ = "0.1.0"
+
+from .plot import Plot, plot  # noqa: E402
+
+__all__ = ["Plot", "plot", "__version__"]

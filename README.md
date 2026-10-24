@@ -49,23 +49,21 @@ draw(plot(rows, { x: "time", y: "value", color: "sensor" }).line().facet("indica
 | Examples | `examples/` |
 | Tests | `tests/`, `python/tests/` |
 
-## Setup
+## Install
 
-You need Node.js 20 or later and Python 3.12 or later. The `wota` style uses the M PLUS 1p font; install it to use that style.
+| Where | Install | Import |
+|---|---|---|
+| Python, notebooks | `pip install python-plotto` | `from plotto import plot` |
+| Web pages, React | `npm install plotto` | `import { plot, draw } from "plotto"`; `import { Plot } from "plotto/react"` |
 
-1. Clone the repo, then install the JS dependencies:
+- Python 3.12 or later. A notebook plot needs no Node.
+- `save()` (PNG and SVG files) and the static copy in notebook outputs need Node.js 20 or later. On the first use, plotto downloads its renderer with `npx` (the npm package of the same version) and keeps it in the npm cache.
+- The `wota` style uses the M PLUS 1p font. Install the font to use that style.
 
-   ```
-   npm install
-   ```
+### Development
 
-2. Install the Python package in your virtual environment. Use the editable install, because the package reads `grammar.json`, `theme.json` and `src/` from the repo:
-
-   ```
-   pip install -e "path/to/plotto/python"
-   ```
-
-   For development, use `pip install -e "python[test]"` in the repo.
+1. Clone the repo and run `npm install`.
+2. Run `pip install -e "python[test]"` in a virtual environment. In a checkout, the package uses `grammar.json`, `theme.json` and `src/` of the repo directly.
 
 ## Use
 
@@ -111,7 +109,6 @@ Palettes: `pastel` (the default style), `sakura`, `aizome`, `momiji` (inspired b
 
 - `draw(spec, element, { interactive })` draws into an element at its width, and draws again when the width changes. It returns `{ destroy }`.
 - In React, use `import { Plot } from "plotto/react"`, then `<Plot spec={plot(rows, {...}).line()} interactive />`.
-- In a project with a bundler, add the repo as a dependency: `"plotto": "file:../plotto"` or the git URL.
 
 ### Slides and reports
 
@@ -165,6 +162,28 @@ To add a layer type:
 6. Add a row to the layer table in `SPEC.md`.
 
 To change a style, a format, a palette or a scheme, edit `theme.json`. A scheme is a list of colors from light to dark; plotto interpolates it in Lab space. To use a new font, add it to `scripts/font_metrics.py`, run the script, and set `font` and `metrics` of the style.
+
+## Release
+
+A tag `vX.Y.Z` publishes `python-plotto` to PyPI and `plotto` to npm (`.github/workflows/release.yml`).
+
+One-time setup:
+
+1. On pypi.org, create an account. Under "Publishing", add a pending trusted publisher: project `python-plotto`, owner `theoradusz`, repository `plotto`, workflow `release.yml`, environment `pypi`.
+2. On GitHub, create the environment `pypi` (Settings → Environments).
+3. On npmjs.com, create an account and an access token of type "Automation". On GitHub, add it as the repository secret `NPM_TOKEN` (Settings → Secrets and variables → Actions).
+
+Each release:
+
+1. Set the same version in `package.json` and in `python/plotto/__init__.py` (a test verifies that they agree).
+2. Commit, then tag and push:
+
+   ```
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
+
+3. The Actions tab shows the release. The packages are then at pypi.org/project/python-plotto and npmjs.com/package/plotto.
 
 To upgrade Observable Plot or d3:
 

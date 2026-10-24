@@ -1,0 +1,18 @@
+# Tests on every push and pull request.
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - run: npm ci
+      - run: npm test
+      - run: CHROME=$(which google-chrome) npm run browser-test
+      - run: pip install -e "python[test]"
+      - run: pytest python/tests
+      - run: ruff check . && black --check .

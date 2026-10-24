@@ -12,3 +12,5 @@ __pycache__/
 # Editors and OS
 .vscode/
 .DS_Store
+python/plotto/_assets/
+python/LICENSE

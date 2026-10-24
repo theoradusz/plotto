@@ -34,3 +34,13 @@ def test_save_width_lays_out_at_that_width(tmp_path):
 def test_repr_names_the_layers():
     assert repr(P) == "<plotto.Plot line, 4 rows>"
     assert repr(P.interactive().facet("g")) == "<plotto.Plot line, facet g, 4 rows, interactive>"
+
+
+def test_python_and_npm_versions_agree():
+    import json
+    from pathlib import Path
+
+    import plotto
+
+    package = json.loads((Path(__file__).resolve().parents[2] / "package.json").read_text())
+    assert plotto.__version__ == package["version"]

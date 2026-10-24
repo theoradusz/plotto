@@ -7,14 +7,12 @@ any other value is a constant.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
-from . import output
+from . import assets, output
 from .data import to_column, to_frame, to_value
 
-ROOT = Path(__file__).resolve().parents[2]  # the repo root
-GRAMMAR = json.loads((ROOT / "grammar.json").read_text())
-THEMES = json.loads((ROOT / "theme.json").read_text())
+GRAMMAR = json.loads(assets.path("grammar.json").read_text())
+THEMES = json.loads(assets.path("theme.json").read_text())
 LAYERS = GRAMMAR["layers"]
 PLOT_CHANNELS = list(dict.fromkeys(ch for layer in LAYERS.values() for ch in layer["channels"]))
 
