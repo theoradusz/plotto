@@ -1,8 +1,9 @@
-// Figure: computes the views, scales and layout, then draws the title, strips, legend and panels as one SVG.
+// Figure: computes the views, scales and layout, then draws the title, info table, strips, legend and panels as one SVG.
 // Observable Plot draws each panel. drawPanels() draws them again after a zoom or a legend click.
 import * as Plot from "@observablehq/plot";
 import * as d3 from "d3";
 import { facetPanels } from "./facets.js";
+import { drawInfo, infoModel } from "./info.js";
 import { LAYERS } from "./layers.js";
 import { drawLegend, legendModel } from "./legend.js";
 import { place, TICK } from "./layout.js";
@@ -31,8 +32,10 @@ export function figure(spec, { document: doc = globalThis.document, width, domai
   for (const p of grid.panels) p.views = ns.layers.map((layer, li) => makeView(ctx, layer, p.rows[li], new Set()));
   const home = homeDomains(ns, grid, kind);
   const horizontal = theme.legend === "bottom";
-  const legend = legendModel(ns, color, fonts, { horizontal, maxWidth: W * 0.9, maxHeight: H * 0.8 });
-  const layout = place({ ns, grid, kind, home, legend, fonts, W, H });
+  const info = infoModel(ns, fonts, { W, H, narrow: W < NARROW });
+  const above = info?.position === "right" ? info.height + fonts.base : 0; // the info card sits above a right legend
+  const legend = legendModel(ns, color, fonts, { horizontal, maxWidth: W * 0.9, maxHeight: H * 0.8 - above });
+  const layout = place({ ns, grid, kind, home, legend, info, fonts, W, H });
 
   const svg = svgElement(doc, "svg", {
     xmlns: "http://www.w3.org/2000/svg",
@@ -45,8 +48,9 @@ export function figure(spec, { document: doc = globalThis.document, width, domai
   });
   svg.append(svgElement(doc, "rect", { width: W, height: H, fill: theme.background }));
   for (const t of layout.texts) svg.append(svgText(doc, t.text, t.attrs));
+  if (info) svg.append(drawInfo(doc, info, theme, layout.info));
   for (const s of layout.strips) svg.append(strip(doc, s, theme, fonts));
-  const state = { spec, ns, doc, svg, theme, fonts, grid, kind, color, ctx, legend, layout, home, W, H };
+  const state = { spec, ns, doc, svg, theme, fonts, grid, kind, color, ctx, legend, info, layout, home, W, H };
   state.domains = domains ?? home;
   state.hidden = hidden;
   state.panelLayer = svg.appendChild(svgElement(doc, "g", { class: "pt-panels" }));

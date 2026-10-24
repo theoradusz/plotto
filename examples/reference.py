@@ -130,6 +130,18 @@ METHODS = [
         [],
     ),
     (
+        'info(entries, position="right")',
+        "A key/value table about the data or the experiment. None removes it.",
+        [
+            ("entries", "dict | list of pairs", "Key → value, in order. Values: str, number, bool or None (shown as –)."),
+            (
+                "position",
+                " | ".join(f'"{p}"' for p in GRAMMAR["infoPosition"]),
+                "A card on the right of the panels, or below them. A plot narrower than 560 px puts it below.",
+            ),
+        ],
+    ),
+    (
         'theme(style="pastel", format=None, width=None, height=None, size=None, legend=None)',
         "The look and the size.",
         [

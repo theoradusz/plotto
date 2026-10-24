@@ -1,4 +1,4 @@
-// Layout: the position and size of the title, panels, strips, axis titles, caption and legend, in px of the figure.
+// Layout: the position and size of the title, info table, panels, strips, axis titles, caption and legend, in px of the figure.
 // Text sizes come from text.js, so Node and the browser get the same layout.
 import * as d3 from "d3";
 import { ticks } from "./scales.js";
@@ -8,7 +8,7 @@ export const TICK = { size: 4, padding: 3 };
 const ROTATE = 40; // degrees of rotated category labels
 const TOOLBAR = 0.22; // share of the width kept free of the title, for the toolbar
 
-export function place({ ns, grid, kind, home, legend, fonts, W, H }) {
+export function place({ ns, grid, kind, home, legend, info, fonts, W, H }) {
   const theme = ns.theme;
   const metrics = theme.metrics;
   const tw = (t, size, bold) => textWidth(t, size, bold, metrics);
@@ -16,6 +16,7 @@ export function place({ ns, grid, kind, home, legend, fonts, W, H }) {
   const pad = Math.round(s * 0.9);
   const gap = Math.round(s * 0.8);
   const { title, subtitle, caption, x: xTitle, y: yTitle } = ns.labels;
+  const at = (position) => (info?.position === position ? info : null);
   const headW = W - 2 * pad - Math.min(180, W * TOOLBAR);
   const titleLines = title ? wrapText(title, fonts.title, headW, true, metrics) : [];
   const subtitleLines = subtitle ? wrapText(subtitle, fonts.subtitle, headW, false, metrics) : [];
@@ -24,9 +25,11 @@ export function place({ ns, grid, kind, home, legend, fonts, W, H }) {
   const xt = xTitle ? fonts.axisTitle * 1.7 : 0;
   const yt = yTitle ? fonts.axisTitle * 1.7 : 0;
   const cap = caption ? fonts.tick * 1.8 : 0;
-  const right = legend && !legend.horizontal ? legend.width + s * 1.5 : 0;
+  const rightW = Math.max(legend && !legend.horizontal ? legend.width : 0, at("right")?.width ?? 0);
+  const right = rightW ? rightW + s * 1.5 : 0;
   const bottom = legend?.horizontal ? legend.height + s * 0.8 : 0;
-  const area = { x: pad + yt, y: top, w: W - 2 * pad - yt - right, h: H - top - pad - xt - bottom - cap };
+  const below = at("bottom") ? at("bottom").height + gap : 0;
+  const area = { x: pad + yt, y: top, w: W - 2 * pad - yt - right, h: H - top - pad - xt - bottom - cap - below };
 
   const strip = grid.kind === "none" ? 0 : Math.round(fonts.strip * 2);
   const wrapStrip = grid.kind === "wrap" ? strip : 0;
@@ -111,10 +114,17 @@ export function place({ ns, grid, kind, home, legend, fonts, W, H }) {
     texts.push({ text: yTitle, attrs: { transform: `translate(${pad + fonts.axisTitle * 0.85},${cy}) rotate(-90)`, "text-anchor": "middle", "font-size": fonts.axisTitle, fill: theme.muted } });
   }
   if (caption) texts.push({ text: fitText(caption, fonts.tick, W - 2 * pad, false, metrics), attrs: { x: innerLeft, y: H - pad - (bottom ? bottom : 0) + fonts.tick * 0.2, "font-size": fonts.tick, fill: theme.muted, "text-anchor": "start" } });
+  const rightX = W - pad - rightW;
+  const infoAt = !info
+    ? null
+    : info.position === "right"
+      ? { x: rightX, y: area.y }
+      : { x: Math.max(pad, Math.min(innerLeft, W - pad - info.width)), y: panelsBottom + xt + gap / 2 };
+  const above = at("right") ? info.height + s : 0;
   const legendAt = !legend
     ? null
     : legend.horizontal
       ? { x: Math.max(pad, (innerLeft + innerRight - legend.width) / 2), y: H - pad - legend.height }
-      : { x: W - pad - legend.width, y: area.y + Math.max(0, (area.h - d3.sum(mb) - legend.height) / 2) };
-  return { panels, strips, texts, legend: legendAt, area, rotateX };
+      : { x: rightX, y: area.y + above + Math.max(0, (area.h - d3.sum(mb) - above - legend.height) / 2) };
+  return { panels, strips, texts, legend: legendAt, info: infoAt, area, rotateX };
 }

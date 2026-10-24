@@ -20,7 +20,7 @@ const spectra = [];
 for (let h = 0; h < 24; h++) for (let w = 220; w <= 420; w += 1.4) spectra.push({ wl: w, a: Math.exp(-(((w - 260) / 22) ** 2)) * (1 + h / 24), hour: h });
 
 const specs = [
-  plot(rows, { x: "time", y: "v", color: "series" }).line().hline({ y: 0 }).facet("sensor", { free: "y" }).labels({ title: "Test" }).spec(),
+  plot(rows, { x: "time", y: "v", color: "series" }).line().hline({ y: 0 }).facet("sensor", { free: "y" }).labels({ title: "Test" }).info({ site: "hayama", run: 15 }).spec(),
   plot(spectra, { x: "wl", y: "a", color: "hour", group: "hour" }).line().spec(),
   plot(rows.slice(0, 60), { x: "time", y: "v", color: "series" }).line().spec(),
 ];
@@ -78,6 +78,8 @@ try {
   };
   const center = (selector) => b.evaluate(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return JSON.stringify([r.left + r.width / 2, r.top + r.height / 2]); })()`).then(JSON.parse);
 
+  const infoSvg = () => b.evaluate("ctl[0].state.svg.querySelector('.pt-info').outerHTML");
+  const infoBefore = await infoSvg();
   await drag(0, [left + 60, panel.y + 30], [left + 200, panel.y + 32]);
   const zoomed = JSON.parse(await b.evaluate("JSON.stringify(ctl[0].state.domains)"));
   const home = JSON.parse(await b.evaluate("JSON.stringify(ctl[0].state.home)"));
@@ -86,6 +88,7 @@ try {
 
   await click(await at(0, left + 100, panel.y + 30), 2);
   check("double-click restores the first view", await b.evaluate("ctl[0].state.domains === ctl[0].state.home"));
+  check("zoom and Home leave the info table as it was", (await infoSvg()) === infoBefore);
   const homeSvg = await b.evaluate("ctl[0].state.svg.querySelector('.pt-panels').outerHTML");
   const firstSvg = stable(renderSVG(specs[0])).match(/<g class="pt-panels">.*<\/g><g class="pt-legend"/s)?.[0]?.replace(/<g class="pt-legend"$/, "");
   check("Home draws the same panels as the first view", stable(homeSvg) === firstSvg);

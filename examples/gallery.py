@@ -359,6 +359,23 @@ def titles():
     )
 
 
+def info():
+    """info() shows facts about the data or the experiment as a key/value table, instead of a long subtitle.
+    The card goes on the right (default) or, with position="bottom", below the plot. A narrow plot puts it below."""
+    base = plot(uv254(), x="time", y="value", color="sensor").line().labels(title="UV254 after cleaning", x=None, y="UV254 (1/m)")
+    entries = {
+        "site": "Hayama",
+        "experiment": "cleaning with chlorine",
+        "run": 15,
+        "chlorine dose": "2.5 mg/L",
+        "contact time": "30 min",
+        "flow rate": "1.2 L/min",
+        "operator": "T. R.",
+        "notes": "membrane replaced the day before; sensor B recalibrated at noon",
+    }
+    return [base.info(entries).theme(height=360), base.info(entries, position="bottom").theme(height=420)]
+
+
 def legends():
     """theme(legend=...) puts the legend on the right (default), at the bottom, or removes it.
     Click an entry to hide it; two quick clicks show only that entry. A narrow plot moves the legend to the bottom."""
@@ -407,7 +424,7 @@ PAGES = {
         "title": "Scales and legends",
         "sections": {
             "Axes": [limits, log_axes, category_order],
-            "Titles and legends": [titles, legends],
+            "Titles and legends": [titles, info, legends],
             "Interaction": [interaction],
         },
     },

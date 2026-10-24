@@ -2,6 +2,7 @@ import json
 import subprocess
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -59,6 +60,9 @@ def test_only_used_columns_go_into_the_spec():
         (lambda p: p.bar(position="beside"), 'unknown position "beside"'),
         (lambda p: p.color(palette="rainbow"), 'unknown palette "rainbow"'),
         (lambda p: p.y(limits=5), "limits must be a list"),
+        (lambda p: p.info({"a": 1}, position="left"), 'unknown position "left"'),
+        (lambda p: p.info({"date": pd.Timestamp("2026-10-01")}), "Format other values as a string"),
+        (lambda p: p.info("hayama"), "entries must be"),
     ],
 )
 def test_errors_name_the_problem_and_the_valid_names(build, message):
@@ -91,3 +95,11 @@ def test_categories_keep_their_order_and_missing_values_are_null():
     columns = plot(df, x="day", y="v").point().spec()["data"][0]["columns"]
     assert columns["day"]["levels"] == ["Mon", "Tue"]
     assert columns["v"]["values"] == [1.5, None]
+
+
+def test_info_keeps_the_order_and_numpy_values():
+    p = plot(pd.DataFrame(FIXTURE["rows"]), x="t", y="v").line()
+    info = p.info({"n": np.int64(3), "x": np.float64(2.0), "ok": np.bool_(True), "none": None}).spec()["info"]
+    assert info == {"entries": [["n", 3], ["x", 2.0], ["ok", True], ["none", None]], "position": "right"}
+    assert "info" not in p.spec()
+    assert "info" not in p.info({"a": 1}).info(None).spec()

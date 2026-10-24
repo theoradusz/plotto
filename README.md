@@ -86,6 +86,17 @@ draw(plot(rows, { x: "time", y: "value", color: "sensor" }).line().facet("indica
 
 Palettes: `pastel` (the default style), `sakura`, `aizome`, `momiji` (inspired by traditional Japanese colors), `wota`, `tableau`. Schemes: `ai`, `sakura`, `matcha`, `yuhi`, `sumi`, `aiaka` (diverging), and every d3 scheme (`viridis`, `magma`, …).
 
+### Info table
+
+Put facts about the data or the experiment in a table instead of a long subtitle:
+
+```python
+p.info({"data point": 15, "location": "hayama", "experiment": "cleaning with chlorine"})
+p.info(entries, position="bottom")   # "right" (default) or "bottom"
+```
+
+The table is a card on the right of the plot, or below it. A plot narrower than 560 px puts it below. `SPEC.md` §7 has the rules.
+
 ### Notebook
 
 - A plot shows at the width of the cell. The text keeps its size, and the height follows the aspect ratio of the format.

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 
+import numpy as np
+
 from . import assets, output
 from .data import to_column, to_frame, to_value
 
@@ -24,7 +26,16 @@ def plot(data, **mapping) -> Plot:
         if ch not in PLOT_CHANNELS:
             _fail("plot()", "channel", ch, PLOT_CHANNELS)
         _need_column(frame, col, "plot()")
-    state = {"data": [frame], "mapping": mapping, "layers": [], "facet": None, "scales": {}, "labels": {}, "theme": {"style": "pastel"}}
+    state = {
+        "data": [frame],
+        "mapping": mapping,
+        "layers": [],
+        "facet": None,
+        "scales": {},
+        "labels": {},
+        "info": None,
+        "theme": {"style": "pastel"},
+    }
     return Plot(state)
 
 
@@ -163,6 +174,22 @@ class Plot:
         _check_keys(options, GRAMMAR["labels"], "labels()")
         return self._with(labels={**self._s["labels"], **options})
 
+    def info(self, entries, **options) -> Plot:
+        """A key/value table about the data or the experiment: info({"location": "hayama"}, position="right"). None removes it."""
+        _check_keys(options, GRAMMAR["info"], "info()")
+        position = options.get("position", "right")
+        if position not in GRAMMAR["infoPosition"]:
+            _fail("info()", "position", position, GRAMMAR["infoPosition"])
+        if entries is None:
+            return self._with(info=None)
+        if isinstance(entries, dict):
+            pairs = list(entries.items())
+        elif isinstance(entries, (list, tuple)):
+            pairs = list(entries)
+        else:
+            raise ValueError("info(): entries must be a dict or a list of (key, value) pairs")
+        return self._with(info={"entries": [_info_entry(pair) for pair in pairs], "position": position})
+
     def theme(self, style="pastel", **options) -> Plot:
         """The look (style) and the output size (format): theme("wota", format="slide")."""
         _check_keys(options, GRAMMAR["theme"], "theme()")
@@ -199,7 +226,7 @@ class Plot:
                 for i in range(len(s["data"])):
                     use(i, col)
         data = [{"columns": {c: to_column(frame[c]) for c in used[i]}} for i, frame in enumerate(s["data"])]
-        return {
+        spec = {
             "version": 1,
             "data": data,
             "mapping": s["mapping"],
@@ -207,8 +234,11 @@ class Plot:
             "facet": s["facet"],
             "scales": s["scales"],
             "labels": s["labels"],
-            "theme": s["theme"],
         }
+        if s["info"]:
+            spec["info"] = s["info"]
+        spec["theme"] = s["theme"]
+        return spec
 
     def save(self, path, scale=2, width=None, height=None):
         """Write the plot as .svg or .png. scale: PNG px per figure px. width, height: the figure size in px."""
@@ -245,6 +275,18 @@ def _constant(key, value, where, columns):
     if isinstance(value, str) and not kind:
         raise ValueError(f'{where}: "{value}" is not a column. Columns: {", ".join(columns)}')
     return to_value(value)
+
+
+def _info_entry(pair):
+    """One [key, value] entry of info(). Numbers keep 6 significant digits; the renderer writes the value as text."""
+    if not isinstance(pair, (list, tuple)) or len(pair) != 2 or not isinstance(pair[0], str):
+        raise ValueError("info(): each entry must be a (key, value) pair with a string key")
+    key, value = pair
+    if value is None or isinstance(value, (str, bool, np.bool_)):
+        return [key, None if value is None else value if isinstance(value, str) else bool(value)]
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        return [key, to_value(value)]
+    raise ValueError(f'info(): the value of "{key}" must be a string, a number, a boolean or None. Format other values as a string')
 
 
 def _need_column(frame, col, where):
