@@ -1,5 +1,5 @@
 # Publishes python-plotto to PyPI and plotto to npm when a tag vX.Y.Z is pushed.
-# Setup (once): PyPI trusted publisher for this repo and workflow; repo secret NPM_TOKEN. See README, "Release".
+# Setup (once): trusted publishing on PyPI and on npm, for this repo and workflow. See README, "Release".
 name: release
 on:
   push:
@@ -44,5 +44,10 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, registry-url: "https://registry.npmjs.org" }
       - run: npm ci
-      - run: npm publish --provenance --access public
-        env: { NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}" }
+      # Trusted publishing (no token) needs npm 11.5.1 or later.
+      - run: npm install -g npm@latest
+      # The first version is published by hand (npm cannot set up trusted publishing before the package exists).
+      - name: Publish, unless this version is already on npm
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          if npm view "plotto@$version" version >/dev/null 2>&1; then echo "plotto@$version is already on npm"; else npm publish --provenance --access public; fi

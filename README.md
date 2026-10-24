@@ -171,7 +171,15 @@ One-time setup:
 
 1. On pypi.org, create an account. Under "Publishing", add a pending trusted publisher: project `python-plotto`, owner `theoradusz`, repository `plotto`, workflow `release.yml`, environment `pypi`.
 2. On GitHub, create the environment `pypi` (Settings → Environments).
-3. On npmjs.com, create an account and an access token of type "Automation". On GitHub, add it as the repository secret `NPM_TOKEN` (Settings → Secrets and variables → Actions).
+3. On npmjs.com, create an account (with two-factor authentication). Publish the first version from your computer, in the repo:
+
+   ```
+   npm login
+   npm test
+   npm publish --access public
+   ```
+
+4. On npmjs.com, open the package `plotto` → Settings → Trusted publishing → GitHub Actions: repository `theoradusz/plotto`, workflow `release.yml`. Later versions then publish from GitHub with no token. The workflow skips a version that is already on npm.
 
 Each release:
 
