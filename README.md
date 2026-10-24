@@ -2,7 +2,7 @@
 
 plotto makes grammar-of-graphics plots for notebooks, web pages, slides and reports. You write a plot in Python or in JavaScript with the same methods. One renderer draws it, so the notebook view, the interactive view and the saved file look the same.
 
-**Gallery:** [theoradusz.github.io/plotto](https://theoradusz.github.io/plotto/), with pages for the basics, the plot types, the colors, the scales and legends, a step-by-step grammar tutorial and the API reference. `SPEC.md` is the contract: the spec format, the rules, the layers, the scales and the behavior.
+**Gallery:** [gallery link](https://theoradusz.github.io/plotto/), with pages for the basics, the plot types, the colors, the scales and legends, a step-by-step grammar tutorial and the API reference. `SPEC.md` is the contract: the spec format, the rules, the layers, the scales and the behavior.
 
 <p>
 <img src="docs/img/lines.png" width="49%"> <img src="docs/img/stacked_bars.png" width="49%">
