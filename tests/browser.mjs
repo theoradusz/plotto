@@ -162,8 +162,20 @@ try {
   check("the text keeps its size after a resize", (await titleSize()) === wideTitle);
   check("the toolbar is smaller on a narrow plot", parseInt(await size()) < parseInt(wide), `${wide} → ${await size()}`);
 
+  check("a static plot has the copy-for-a-slide button", await b.evaluate("!!document.querySelector('#p2 .pt-btn[title=\"Copy for a slide\"]')"));
   check("a static plot has the copy and download buttons", await b.evaluate("!!document.querySelector('#p2 .pt-btn[title=\"Copy as PNG\"]') && !!document.querySelector('#p2 .pt-btn[title=\"Download\"]')"));
   check("a static plot has no zoom buttons", await b.evaluate("!document.querySelector('#p2 .pt-btn[title^=\"Zoom\"]')"));
+  // The clipboard is stubbed: the test reads the size of the PNG that the button writes.
+  const slidePNG = await b.evaluate(`(async () => {
+    let item;
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { write: async ([i]) => { item = i; } } });
+    document.querySelector("#p2 .pt-btn[title='Copy for a slide']").click();
+    for (let k = 0; k < 50 && !item; k++) await new Promise((r) => setTimeout(r, 100));
+    const bitmap = await createImageBitmap(await item.getType("image/png"));
+    const html = await (await item.getType("text/html")).text();
+    return bitmap.width + "x" + bitmap.height + " " + html.match(/width="\\d+" height="\\d+"/)?.[0];
+  })()`);
+  check("copy for a slide writes a 3× PNG and an <img> of 645 × 403 (6.72 × 4.2 in in Google Slides)", slidePNG === '1935x1209 width="645" height="403"', slidePNG);
   const panel2 = JSON.parse(await b.evaluate("JSON.stringify(ctl[2].state.layout.panels[0])"));
   await drag(2, [panel2.x + panel2.ml + 50, panel2.y + 30], [panel2.x + panel2.ml + 250, panel2.y + 200]);
   check("a drag on a static plot does not zoom", await b.evaluate("ctl[2].state.domains === ctl[2].state.home"));

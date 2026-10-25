@@ -54,6 +54,7 @@ def test_only_used_columns_go_into_the_spec():
         (lambda p: p.line(dash="wavy"), 'unknown dash "wavy"'),
         (lambda p: p.x(type="polar"), 'unknown type "polar"'),
         (lambda p: p.theme("wota", legend="left"), 'unknown legend "left"'),
+        (lambda p: p.theme(aspect=0), "aspect must be a positive number"),
         (lambda p: p.theme("fancy"), 'unknown style "fancy"'),
         (lambda p: p.theme(format="poster"), 'unknown format "poster"'),
         (lambda p: p.hist(density="yes"), "density must be True or False"),

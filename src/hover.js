@@ -5,6 +5,7 @@
 // - points (and error bars): the nearest point. It stays picked until another point is clearly nearer.
 import * as d3 from "d3";
 import { hoverFormat } from "./scales.js";
+import { boxStats } from "./stats.js";
 
 const RADIUS = 40; // px: the largest distance to a point or a line
 const CLOSE = 10; // px: a point this close wins over the lines
@@ -242,12 +243,7 @@ function boxUnder({ state, sx }, layer, view, c, x) {
   });
   if (k === undefined) return null;
   const key = String(view.cols.x[k]);
-  const values = d3.range(view.n).filter((j) => String(view.cols.x[j]) === key).map((j) => view.cols.y[j]).filter((v) => v !== null).sort(d3.ascending);
-  const [q1, median, q3] = [0.25, 0.5, 0.75].map((p) => d3.quantile(values, p));
-  const iqr = q3 - q1;
-  const low = d3.min(values.filter((v) => v >= q1 - 1.5 * iqr));
-  const high = d3.max(values.filter((v) => v <= q3 + 1.5 * iqr));
-  const outliers = values.filter((v) => v < low || v > high).length;
+  const { n, q1, median, q3, low, high, outliers } = boxStats(d3.range(view.n).filter((j) => String(view.cols.x[j]) === key).map((j) => view.cols.y[j]));
   const f = (v) => fmt(state, "y", v);
   const rows = [
     { label: "max (whisker)", value: f(high) },
@@ -255,9 +251,9 @@ function boxUnder({ state, sx }, layer, view, c, x) {
     { label: "median", value: f(median), strong: true },
     { label: "q1", value: f(q1) },
     { label: "min (whisker)", value: f(low) },
-    { label: "n", value: String(values.length) },
+    { label: "n", value: String(n) },
   ];
-  if (outliers) rows.push({ label: "outliers", value: String(outliers) });
+  if (outliers.length) rows.push({ label: "outliers", value: String(outliers.length) });
   const x0 = sx.apply(view.cols.x[k]);
   const color = layer.channels.color?.column ? seriesColor(state, layer, view, c, k) : state.theme.ink;
   return { color, header: `${view.hover.fields[0].label}  ${key}`, rows, marks: [], anchor: { x: x0 + sx.bandwidth, y: null } };

@@ -26,6 +26,7 @@ export function resolveTheme({ style = "pastel", format = "screen", legend = "ri
   // A set height alone keeps the reflow of the width and fixes the height.
   if (overrides.width != null && overrides.height == null) theme.height = Math.round((overrides.width * f.height) / f.width);
   theme.fixedHeight = overrides.height != null;
+  theme.fitHeight = f.reflow && !theme.fixedHeight; // a screen plot: its height may follow the panel aspect
   theme.palette = palette(theme, theme.palette);
   return theme;
 }

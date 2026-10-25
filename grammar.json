@@ -46,7 +46,7 @@
   "grid": ["free"],
   "free": ["x", "y", "both"],
   "labels": ["title", "subtitle", "x", "y", "color", "caption"],
-  "theme": ["format", "width", "height", "size", "legend"],
+  "theme": ["format", "width", "height", "size", "legend", "aspect"],
   "legend": ["right", "bottom", "none"],
   "info": ["position"],
   "infoPosition": ["right", "bottom"]

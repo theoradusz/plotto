@@ -155,6 +155,7 @@ METHODS = [
             ("height", "px", "A fixed height; the width still follows the page"),
             ("size", "px", "Base text size"),
             ("legend", '"right" | "bottom" | "none"', "Legend position"),
+            ("aspect", "number", "Panel height / width: 1 for square panels. A screen plot changes its height to fit them"),
         ],
     ),
     ("interactive() → Plot", "The same plot with zoom, pan, hover and legend toggle in the notebook.", []),

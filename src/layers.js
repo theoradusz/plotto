@@ -3,6 +3,7 @@
 // To add a layer type: add one entry here, one entry in grammar.json and, for a statistic, a case in views.js.
 import * as Plot from "@observablehq/plot";
 import * as d3 from "d3";
+import { boxStats } from "./stats.js";
 
 const DASH = { solid: undefined, dashed: "6,4", dotted: "1.5,3", dashdot: "6,3,1.5,3" };
 const clip = "frame";
@@ -121,9 +122,28 @@ export const LAYERS = {
     return [rule, cap("ymin"), cap("ymax")];
   },
 
-  box: (c) => [
-    Plot.boxY(c.index, { x: c.v("x"), y: c.v("y"), fill: c.colors(c.theme.strip), fillOpacity: c.options.alpha ?? 1, stroke: c.theme.ink, strokeWidth: 1, r: c.theme.point, clip }),
-  ],
+  // One Tukey box per category, in the series color: a light box from q1 to q3, a bold median, whiskers with caps,
+  // and the outliers as small dots (they blend with jittered points drawn on top).
+  box: (c) => {
+    const [x, y, colors] = [c.v("x"), c.v("y"), c.colors(c.theme.muted)]; // gray without a color mapping
+    const boxes = [];
+    for (const [key, rows] of d3.group(c.index, (i) => x[i])) {
+      const stats = boxStats(rows.map((i) => y[i]));
+      if (stats.n) boxes.push({ key, color: Array.isArray(colors) ? colors[rows[0]] : colors, ...stats });
+    }
+    const outliers = boxes.flatMap((b) => b.outliers.map((v) => ({ key: b.key, v, color: b.color })));
+    const inset = (share) => ({ insetLeft: c.bandwidth.x * share, insetRight: c.bandwidth.x * share });
+    const line = { x: "key", stroke: "color", strokeWidth: 1.25, clip };
+    return [
+      Plot.ruleX(boxes, { ...line, y1: "q3", y2: "high" }),
+      Plot.ruleX(boxes, { ...line, y1: "low", y2: "q1" }),
+      Plot.tickY(boxes, { ...line, y: "high", ...inset(0.38) }),
+      Plot.tickY(boxes, { ...line, y: "low", ...inset(0.38) }),
+      Plot.barY(boxes, { ...line, y1: "q1", y2: "q3", fill: "color", fillOpacity: c.options.alpha ?? 0.3, ...inset(0.22) }),
+      Plot.tickY(boxes, { x: "key", y: "median", stroke: c.theme.ink, strokeWidth: 2.25, ...inset(0.22), clip }),
+      Plot.dot(outliers, { x: "key", y: "v", fill: "color", r: c.theme.point, clip }),
+    ];
+  },
 };
 
 // Overlaid fills are see-through, stacked fills are solid.

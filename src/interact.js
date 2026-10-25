@@ -12,6 +12,18 @@ const DRAG_MIN = 5; // px: a smaller drag is a click
 const MIN_WIDTH = 320; // px
 const ZOOM_STEP = 0.75; // zoom in keeps 75% of the range
 const DOUBLE = 300; // ms: two legend clicks within this time are a double-click
+// The pasted size of "Copy for a slide", at 96 px per inch: 6.72 × 4.2 in, 75% of the height of a 16:9 Google slide.
+export const SLIDE_SIZE = { width: 645, height: 403 };
+// PNG px per pasted px: 288 px per inch, and 1935 px wide, under the ~2000 px above which Slides may compress images.
+const SLIDE_SCALE = 3;
+
+// The current view (zoom and hidden series) drawn again in the slide format, for "Copy for a slide".
+export function slideFigure(spec, state) {
+  const s = typeof spec?.spec === "function" ? spec.spec() : spec;
+  const theme = { ...s.theme, format: "slide", width: null, height: null, size: null };
+  const domains = state.domains === state.home ? undefined : state.domains;
+  return figure({ ...s, theme }, { document: state.doc, domains, hidden: state.hidden });
+}
 
 // Returns a controller: { state (the current figure), redraw(), destroy() }.
 export function draw(spec, el, { interactive = false, width } = {}) {
@@ -42,6 +54,7 @@ export function draw(spec, el, { interactive = false, width } = {}) {
   const groups = [
     [
       { name: "copy", title: "Copy as PNG", action: (b) => copyPNG(ctl.state.svg).then((how) => bar.flash("copy", how)) },
+      { name: "slide", title: "Copy for a slide", action: () => copyPNG(slideFigure(spec, ctl.state).svg, SLIDE_SIZE, SLIDE_SCALE).then((how) => bar.flash("slide", how)) },
       { name: "download", title: "Download", menu: [["PNG", () => downloadPNG(ctl.state.svg)], ["SVG", () => downloadSVG(ctl.state.svg)]] },
     ],
   ];

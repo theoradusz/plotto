@@ -122,6 +122,7 @@ class Builder {
     if (!(style in THEMES.styles)) fail("theme()", "style", style, Object.keys(THEMES.styles));
     if (options.format !== undefined && !(options.format in THEMES.formats)) fail("theme()", "format", options.format, Object.keys(THEMES.formats));
     if (options.legend !== undefined && !GRAMMAR.legend.includes(options.legend)) fail("theme()", "legend", options.legend, GRAMMAR.legend);
+    if (options.aspect != null && !(typeof options.aspect === "number" && options.aspect > 0)) throw new Error("theme(): aspect must be a positive number (panel height / width), for example 1 for square panels");
     return this.#with({ theme: { style, ...options } });
   }
 

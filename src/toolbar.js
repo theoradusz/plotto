@@ -10,6 +10,7 @@ const ICONS = {
   zoomOut: '<path d="M5 12h14"/>',
   home: '<path d="M4 11l8-7 8 7M6 9.5V20h12V9.5"/>',
   copy: '<rect x="8.5" y="8.5" width="11" height="11"/><path d="M15.5 8.5V4.5h-11v11h4"/>',
+  slide: '<rect x="3.5" y="4.5" width="17" height="11"/><path d="M12 15.5v4M8 19.5h8M7 12.5l3-3 2.5 2 4.5-4"/>',
   download: '<path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14"/>',
   check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
 };
