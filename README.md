@@ -197,7 +197,8 @@ One-time setup:
 Each release (`main` takes changes only through a reviewed pull request):
 
 ```bash
-# 1. Merge your changes into main through a pull request
+# 1. Merge your changes into main through a pull request,
+#    with a line for each change under "## Unreleased" in CHANGELOG.md
 
 # 2. Prepare the release
 git switch main && git pull && source .venv/bin/activate
@@ -211,7 +212,7 @@ scripts/release.sh tag    # answer y
 npm view plotto version && pip index versions python-plotto
 ```
 
-- `scripts/release.sh X.Y.Z` checks that `main` is current and the version is new. It runs every test and lint. Then, on the branch `release/vX.Y.Z`, it sets the version in `package.json`, `package-lock.json` and `python/plotto/__init__.py`, builds `docs/`, commits and pushes.
+- `scripts/release.sh X.Y.Z` checks that `main` is current, that the version is new and that `CHANGELOG.md` has changes under "Unreleased". It runs every test and lint. Then, on the branch `release/vX.Y.Z`, it sets the version in `package.json`, `package-lock.json` and `python/plotto/__init__.py`, moves the "Unreleased" changes to a dated `X.Y.Z` section, builds `docs/`, commits and pushes.
 - `scripts/release.sh tag` tags the merged `main` as `vX.Y.Z`, asks before it pushes the tag, and deletes the release branch.
 - The pushed tag runs `.github/workflows/release.yml`, which publishes to PyPI and npm. Follow it in the Actions tab.
 
