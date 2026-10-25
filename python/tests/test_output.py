@@ -28,7 +28,7 @@ def test_notebook_output_is_html_with_the_static_svg_inside():
 def test_save_width_lays_out_at_that_width(tmp_path):
     P.save(tmp_path / "wide.png", scale=1, width=1600)
     png = (tmp_path / "wide.png").read_bytes()
-    assert (int.from_bytes(png[16:20], "big"), int.from_bytes(png[20:24], "big")) == (1600, 800)
+    assert (int.from_bytes(png[16:20], "big"), int.from_bytes(png[20:24], "big")) == (1600, 889)  # the screen ratio, 900 × 500
 
 
 def test_repr_names_the_layers():

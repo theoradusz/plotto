@@ -122,7 +122,7 @@ export const LAYERS = {
   },
 
   box: (c) => [
-    Plot.boxY(c.index, { x: c.v("x"), y: c.v("y"), fill: c.colors(c.theme.strip), fillOpacity: c.options.alpha ?? 1, stroke: c.theme.ink, strokeWidth: 1, r: c.theme.point }),
+    Plot.boxY(c.index, { x: c.v("x"), y: c.v("y"), fill: c.colors(c.theme.strip), fillOpacity: c.options.alpha ?? 1, stroke: c.theme.ink, strokeWidth: 1, r: c.theme.point, clip }),
   ],
 };
 

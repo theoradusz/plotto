@@ -182,7 +182,7 @@ A style can also list theme color names as its palette: the `paper` and `dark` s
 
 | Format | Size (px) | Base text (px) | Width |
 |---|---|---|---|
-| `screen` (default) | 900 × 450 | 12 | Follows the element or cell width (reflow) |
+| `screen` (default) | 900 × 500 | 12 | Follows the element or cell width (reflow) |
 | `report` | 640 × 400 | 10 | Fixed |
 | `slide` | 1280 × 720 | 20 | Fixed |
 
