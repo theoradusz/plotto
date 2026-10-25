@@ -101,6 +101,6 @@ def test_categories_keep_their_order_and_missing_values_are_null():
 def test_info_keeps_the_order_and_numpy_values():
     p = plot(pd.DataFrame(FIXTURE["rows"]), x="t", y="v").line()
     info = p.info({"n": np.int64(3), "x": np.float64(2.0), "ok": np.bool_(True), "none": None}).spec()["info"]
-    assert info == {"entries": [["n", 3], ["x", 2.0], ["ok", True], ["none", None]], "position": "right"}
+    assert info == {"entries": [["n", 3], ["x", 2.0], ["ok", True], ["none", None]]}
     assert "info" not in p.spec()
     assert "info" not in p.info({"a": 1}).info(None).spec()

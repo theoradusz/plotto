@@ -10,9 +10,9 @@ const MAX_HEIGHT = { right: 0.6, bottom: 0.3 }; // share of the figure height; t
 const MAX_COLUMNS = 3; // columns of entries in a bottom card
 
 // The info model with its position and size. narrow: a right placement moves to the bottom.
-export function infoModel(ns, fonts, { W, H, narrow }) {
+export function infoModel(ns, fonts, { W, H, narrow, place = ns.info?.position }) {
   if (!ns.info) return null;
-  const position = narrow ? "bottom" : ns.info.position;
+  const position = narrow ? "bottom" : place;
   return model(ns, fonts, ns.info.entries, position, W, H * MAX_HEIGHT[position]);
 }
 
@@ -45,11 +45,13 @@ function model(ns, fonts, entries, position, W, maxHeight) {
   const table = (rows) => {
     let columns;
     if (position === "bottom") {
-      const natural = d3.max(rows, (r) => width(r.key) + keyGap + width(r.value)) ?? 0;
-      const k = Math.max(1, Math.min(MAX_COLUMNS, rows.length, Math.floor((inner + colGap) / (natural + colGap))));
-      const perColumn = Math.ceil(rows.length / k);
-      const colW = (inner - colGap * (k - 1)) / k;
-      columns = d3.range(k).map((j) => column(rows.slice(j * perColumn, (j + 1) * perColumn), colW));
+      // The most columns (up to 3) whose entries fit on one line each in the width; else one column that wraps.
+      const split = (k) => {
+        const perColumn = Math.ceil(rows.length / k);
+        return d3.range(k).map((j) => column(rows.slice(j * perColumn, (j + 1) * perColumn), Infinity));
+      };
+      const fit = d3.range(Math.min(MAX_COLUMNS, rows.length), 1, -1).map(split).find((c) => d3.sum(c, (col) => col.width) + colGap * (c.length - 1) <= inner);
+      columns = fit ?? [column(rows, inner)];
     } else columns = [column(rows, inner)];
     let x = pad;
     for (const c of columns) (c.x = x), (x += c.width + colGap);
