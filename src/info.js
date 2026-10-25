@@ -62,7 +62,9 @@ function model(ns, fonts, entries, position, W, maxHeight) {
     kept--;
     t = table([...all.slice(0, kept), { key: `+${all.length - kept} more`, value: "" }]);
   }
-  return { position, size, pad, lineH, keyGap, ...t };
+  // cut: the entries that do not show, plus the keys that end with an ellipsis.
+  const keys = t.columns.flatMap((c) => c.rows).filter((r) => r.key !== r.full).length;
+  return { position, size, pad, lineH, keyGap, cut: all.length - kept + keys, ...t };
 }
 
 // The table as an SVG group at (x, y): keys in the muted color, values in the ink color, on a strip-colored card.

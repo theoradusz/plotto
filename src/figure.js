@@ -16,6 +16,8 @@ import { layerEdges, makeView } from "./views.js";
 const NARROW = 560; // px: below this width, a right legend moves to the bottom
 const MIN_HEIGHT = 240; // px: the smallest height of a reflowed figure
 const ASPECT_GROWTH = 1.2; // a theme aspect makes a reflowed figure at most this much taller
+const RIGHT_SHARE = 0.25; // a format with "shrink" keeps the right column (legend, info card) to this share of the width
+const SHRINK_STEP = 0.05; // and makes their text smaller by this share of its size at each step
 
 // options: document (the browser or jsdom), width (lay out at this width), domains and hidden (keep a view after a resize).
 export function figure(spec, { document: doc = globalThis.document, width, domains, hidden = new Set() } = {}) {
@@ -25,7 +27,6 @@ export function figure(spec, { document: doc = globalThis.document, width, domai
   const reflowed = width && theme.reflow && !theme.fixedHeight;
   let H = reflowed ? Math.max(MIN_HEIGHT, Math.round((W * theme.height) / theme.width)) : theme.height;
   if (theme.legend === "right" && W < NARROW) theme.legend = "bottom";
-  const fonts = fontSizes(theme);
   const grid = facetPanels(ns);
   const kind = { x: axisKind(ns, "x"), y: axisKind(ns, "y") };
   const color = colorScale(ns);
@@ -33,19 +34,32 @@ export function figure(spec, { document: doc = globalThis.document, width, domai
   for (const p of grid.panels) p.views = ns.layers.map((layer, li) => makeView(ctx, layer, p.rows[li], new Set()));
   const home = homeDomains(ns, grid, kind);
   const horizontal = theme.legend === "bottom";
-  const arrange = (H) => {
-    const info = infoModel(ns, fonts, { W, H, narrow: W < NARROW });
-    const above = info?.position === "right" ? info.height + fonts.base : 0; // the info card sits above a right legend
-    const legend = legendModel(ns, color, fonts, { horizontal, maxWidth: W * 0.9, maxHeight: H * 0.8 - above });
-    return { info, legend, layout: place({ ns, grid, kind, home, legend, info, fonts, W, H }) };
+  // The legend and the info card fit: a right column of at most RIGHT_SHARE of the width, one legend column,
+  // no cut legend label, no cut info key and no "+N more" row. A format with "shrink" (slide) makes their text smaller until they
+  // fit, down to that share of the size; the other formats keep the size.
+  const fits = (info, legend) => {
+    const right = Math.max(legend && !legend.horizontal ? legend.width : 0, info?.position === "right" ? info.width : 0);
+    const cut = legend?.items?.some((it) => it.lines.at(-1).endsWith("…") || (!legend.horizontal && it.x > 0));
+    return right <= W * RIGHT_SHARE && !cut && !info?.cut;
   };
-  let { info, legend, layout } = arrange(H);
+  const arrange = (H) => {
+    const base = fontSizes(theme);
+    for (let k = 1; ; k -= SHRINK_STEP) {
+      const f = { ...base, legend: Math.round(base.legend * k * 10) / 10 };
+      const info = infoModel(ns, f, { W, H, narrow: W < NARROW });
+      const above = info?.position === "right" ? info.height + f.base : 0; // the info card sits above a right legend
+      const legend = legendModel(ns, color, f, { horizontal, maxWidth: W * 0.9, maxHeight: H * 0.8 - above });
+      if (fits(info, legend) || k - SHRINK_STEP < (theme.shrink ?? 1) - 1e-9) return { fonts: f, info, legend, layout: place({ ns, grid, kind, home, legend, info, fonts: f, W, H }) };
+    }
+  };
+  let fonts, info, legend, layout;
+  ({ fonts, info, legend, layout } = arrange(H));
   // aspect: when the height follows the width, it changes so that the panels get their shape, up to 1.2 times the
   // usual height; beyond that, the panels get narrower.
   if (theme.aspect && theme.fitHeight) {
     const fit = H + grid.nrow * (layout.room.w * theme.aspect - layout.room.h);
     H = Math.round(Math.min(H * ASPECT_GROWTH, Math.max(MIN_HEIGHT, fit)));
-    ({ info, legend, layout } = arrange(H));
+    ({ fonts, info, legend, layout } = arrange(H));
   }
 
   const svg = svgElement(doc, "svg", {
