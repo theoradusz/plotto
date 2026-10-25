@@ -6,6 +6,8 @@ Write each change under "Unreleased". `scripts/release.sh` moves them to the new
 
 ## Unreleased
 
+## 0.4.0 – 2026-10-25
+
 ### Added
 
 - The "Copy for a slide" button copies the current view for Google Slides. The pasted image is 6.72 × 4.2 in and sharp.
