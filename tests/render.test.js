@@ -234,7 +234,8 @@ test("info() checks its entries and keeps the old builder", () => {
   assert.throws(() => base.info("hayama"), /entries must be/);
   const withInfo = base.info([["15", "first"], ["a", 1]]);
   assert.equal(base.spec().info, undefined);
-  assert.deepEqual(withInfo.spec().info, { entries: [["15", "first"], ["a", 1]], position: "right" });
+  assert.deepEqual(withInfo.spec().info, { entries: [["15", "first"], ["a", 1]] });
+  assert.equal(base.info({ a: 1 }, { position: "bottom" }).spec().info.position, "bottom");
   assert.equal(withInfo.info(null).spec().info, undefined);
 });
 
@@ -276,6 +277,28 @@ test("a slide makes long legend and info text smaller until it fits; a screen pl
   assert.equal(screen.fonts.legend, 11);
   const short = figure(base.line().theme("pastel", { format: "slide" }).spec(), { document });
   assert.equal(short.fonts.legend, 21, "a short legend keeps the slide size");
+});
+
+test("a fixed size puts the legend where the panels get the most room, unless the spec sets it", () => {
+  const p = base.line().labels({ title: "T" });
+  const area = (f) => f.layout.panels[0].innerW * f.layout.panels[0].innerH;
+  const auto = figure(p.theme("pastel", { format: "slide" }).spec(), { document });
+  const right = figure(p.theme("pastel", { format: "slide", legend: "right" }).spec(), { document });
+  const bottom = figure(p.theme("pastel", { format: "slide", legend: "bottom" }).spec(), { document });
+  assert.equal(right.legend.horizontal, false, "a set place stays");
+  assert.equal(area(auto), Math.max(area(right), area(bottom)));
+  assert.equal(figure(p.spec(), { document, width: 900 }).legend.horizontal, false, "a screen plot keeps the legend on the right");
+});
+
+test("a slide makes long strip text smaller before it cuts it", () => {
+  const strips = ["a rather long facet label number one", "a rather long facet label number two", "short"];
+  const rows3 = strips.flatMap((k) => [{ t: 0, v: 0, k }, { t: 1, v: 1, k }]);
+  const slide = figure(plot(rows3, { x: "t", y: "v" }).line().facet("k", { ncol: 3 }).theme("pastel", { format: "slide" }).spec(), { document });
+  const sizes = slide.layout.strips.map((s) => s.size);
+  assert.ok(sizes[0] < slide.fonts.strip && sizes[0] >= slide.fonts.strip * 0.7, `strip text ${sizes[0]}`);
+  assert.equal(new Set(sizes).size, 1, "all strips have the same size");
+  const screen = figure(plot(rows3, { x: "t", y: "v" }).line().facet("k", { ncol: 3 }).spec(), { document, width: 900 });
+  assert.equal(screen.layout.strips[0].size, screen.fonts.strip);
 });
 
 test("a method returns a new builder and keeps the old one", () => {

@@ -16,8 +16,8 @@ import { layerEdges, makeView } from "./views.js";
 const NARROW = 560; // px: below this width, a right legend moves to the bottom
 const MIN_HEIGHT = 240; // px: the smallest height of a reflowed figure
 const ASPECT_GROWTH = 1.2; // a theme aspect makes a reflowed figure at most this much taller
-const RIGHT_SHARE = 0.25; // a format with "shrink" keeps the right column (legend, info card) to this share of the width
-const SHRINK_STEP = 0.05; // and makes their text smaller by this share of its size at each step
+const SHRINK_STEP = 0.05; // a format with "shrink" tries the legend and info text smaller by this share at each step
+const ROOM_TOLERANCE = 0.1; // it keeps the largest text whose panel area is at most this share below the best layout
 
 // options: document (the browser or jsdom), width (lay out at this width), domains and hidden (keep a view after a resize).
 export function figure(spec, { document: doc = globalThis.document, width, domains, hidden = new Set() } = {}) {
@@ -33,33 +33,46 @@ export function figure(spec, { document: doc = globalThis.document, width, domai
   const ctx = { ns, kind, colorLevels: color.domain ?? [], edges: layerEdges(ns) };
   for (const p of grid.panels) p.views = ns.layers.map((layer, li) => makeView(ctx, layer, p.rows[li], new Set()));
   const home = homeDomains(ns, grid, kind);
-  const horizontal = theme.legend === "bottom";
-  // The legend and the info card fit: a right column of at most RIGHT_SHARE of the width, one legend column,
-  // no cut legend label, no cut info key and no "+N more" row. A format with "shrink" (slide) makes their text smaller until they
-  // fit, down to that share of the size; the other formats keep the size.
-  const fits = (info, legend) => {
-    const right = Math.max(legend && !legend.horizontal ? legend.width : 0, info?.position === "right" ? info.width : 0);
-    const cut = legend?.items?.some((it) => it.lines.at(-1).endsWith("…") || (!legend.horizontal && it.x > 0));
-    return right <= W * RIGHT_SHARE && !cut && !info?.cut;
-  };
-  const arrange = (H) => {
+  // One layout: the place of the legend and of the info card (right or bottom), and their text size (share k).
+  // cut counts what does not show well: legend labels and info keys with an ellipsis, a second legend column,
+  // the "+N more" entries of the info card.
+  const arrange = (H, where, k) => {
     const base = fontSizes(theme);
-    for (let k = 1; ; k -= SHRINK_STEP) {
-      const f = { ...base, legend: Math.round(base.legend * k * 10) / 10 };
-      const info = infoModel(ns, f, { W, H, narrow: W < NARROW });
-      const above = info?.position === "right" ? info.height + f.base : 0; // the info card sits above a right legend
-      const legend = legendModel(ns, color, f, { horizontal, maxWidth: W * 0.9, maxHeight: H * 0.8 - above });
-      if (fits(info, legend) || k - SHRINK_STEP < (theme.shrink ?? 1) - 1e-9) return { fonts: f, info, legend, layout: place({ ns, grid, kind, home, legend, info, fonts: f, W, H }) };
-    }
+    const f = { ...base, legend: Math.round(base.legend * k * 10) / 10 };
+    const info = infoModel(ns, f, { W, H, narrow: W < NARROW, place: where.info });
+    const above = info?.position === "right" ? info.height + f.base : 0; // the info card sits above a right legend
+    const legend = legendModel(ns, color, f, { horizontal: where.legend === "bottom", maxWidth: W * 0.9, maxHeight: H * 0.8 - above });
+    const layout = place({ ns, grid, kind, home, legend, info, fonts: f, W, H });
+    const items = legend?.items ?? [];
+    const cut = items.filter((it) => it.lines.at(-1).endsWith("…")).length + (items.some((it) => !legend.horizontal && it.x > 0) ? 1 : 0) + (info?.cut ?? 0);
+    const p = layout.panels[0];
+    const usual = where.legend === theme.legend && where.info === ns.info?.position; // the places of the theme and spec
+    return { fonts: f, info, legend, layout, k, cut, usual, area: p.innerW * p.innerH };
   };
-  let fonts, info, legend, layout;
-  ({ fonts, info, legend, layout } = arrange(H));
+  // The layout to draw. A screen plot keeps the places of the theme and the text size. A fixed size (slide, report,
+  // a set height) also tries the legend and the info card on the right and at the bottom, unless the spec sets
+  // their place; a format with "shrink" (slide) also tries smaller text, down to that share. Of the layouts that cut
+  // the least and whose panel area is at most ROOM_TOLERANCE below the best, it keeps the largest text, then the
+  // usual places, then the largest area.
+  const choose = (H) => {
+    const fixed = !theme.fitHeight;
+    const legends = fixed && !theme.legendSet && theme.legend === "right" ? ["right", "bottom"] : [theme.legend];
+    const infos = fixed && ns.info && !ns.info.set ? ["right", "bottom"] : [ns.info?.position];
+    const scales = [];
+    for (let k = 1; k >= (theme.shrink ?? 1) - 1e-9; k -= SHRINK_STEP) scales.push(k);
+    const all = legends.flatMap((l) => infos.flatMap((i) => scales.map((k) => arrange(H, { legend: l, info: i }, k))));
+    const fewest = d3.min(all, (a) => a.cut);
+    const pool = all.filter((a) => a.cut === fewest);
+    const best = d3.max(pool, (a) => a.area);
+    return pool.filter((a) => a.area >= best * (1 - ROOM_TOLERANCE)).sort((a, b) => b.k - a.k || b.usual - a.usual || b.area - a.area)[0];
+  };
+  let { fonts, info, legend, layout } = choose(H);
   // aspect: when the height follows the width, it changes so that the panels get their shape, up to 1.2 times the
   // usual height; beyond that, the panels get narrower.
   if (theme.aspect && theme.fitHeight) {
     const fit = H + grid.nrow * (layout.room.w * theme.aspect - layout.room.h);
     H = Math.round(Math.min(H * ASPECT_GROWTH, Math.max(MIN_HEIGHT, fit)));
-    ({ fonts, info, legend, layout } = arrange(H));
+    ({ fonts, info, legend, layout } = choose(H));
   }
 
   const svg = svgElement(doc, "svg", {
@@ -74,7 +87,7 @@ export function figure(spec, { document: doc = globalThis.document, width, domai
   svg.append(svgElement(doc, "rect", { width: W, height: H, fill: theme.background }));
   for (const t of layout.texts) svg.append(svgText(doc, t.text, t.attrs));
   if (info) svg.append(drawInfo(doc, info, theme, layout.info));
-  for (const s of layout.strips) svg.append(strip(doc, s, theme, fonts));
+  for (const s of layout.strips) svg.append(strip(doc, s, theme));
   const state = { spec, ns, doc, svg, theme, fonts, grid, kind, color, ctx, legend, info, layout, home, W, H };
   state.domains = domains ?? home;
   state.hidden = hidden;
@@ -213,13 +226,13 @@ function homeDomain(ns, axis, kind, panels) {
   return limits ? [limits[0] ?? trained[0], limits[1] ?? trained[1]] : trained;
 }
 
-function strip(doc, s, theme, fonts) {
+function strip(doc, s, theme) {
   const g = svgElement(doc, "g", { class: "pt-strip" });
   g.append(svgElement(doc, "rect", { x: s.x, y: s.y, width: s.w, height: s.h, fill: theme.strip }));
   const attrs = s.vertical
     ? { transform: `translate(${s.x + s.w / 2},${s.y + s.h / 2}) rotate(90)`, dy: "0.35em" }
     : { x: s.x + s.w / 2, y: s.y + s.h / 2, dy: "0.35em" };
-  const text = svgText(doc, s.text, { ...attrs, "text-anchor": "middle", "font-weight": "bold", "font-size": fonts.strip, fill: theme.ink });
+  const text = svgText(doc, s.text, { ...attrs, "text-anchor": "middle", "font-weight": "bold", "font-size": s.size, fill: theme.ink });
   if (s.text !== String(s.full)) text.append(svgText(doc, s.full, {}, "title"));
   g.append(text);
   return g;

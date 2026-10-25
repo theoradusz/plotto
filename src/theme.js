@@ -27,6 +27,7 @@ export function resolveTheme({ style = "pastel", format = "screen", legend = "ri
   if (overrides.width != null && overrides.height == null) theme.height = Math.round((overrides.width * f.height) / f.width);
   theme.fixedHeight = overrides.height != null;
   theme.fitHeight = f.reflow && !theme.fixedHeight; // a screen plot: its height may follow the panel aspect
+  theme.fixedFormat = !f.reflow; // report, slide: a picture of a fixed size, often copied without its toolbar
   theme.palette = palette(theme, theme.palette);
   return theme;
 }

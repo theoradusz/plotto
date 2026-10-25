@@ -41,7 +41,7 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 | `facet` | `{wrap, free, ncol}`, `{rows, cols, free}` or `null` |
 | `scales` | `x`, `y`: `type`, `limits`, `format`. `color`: `values`, `palette`, `scheme`, `limits`, `mid`, `clamp`. |
 | `labels` | `title`, `subtitle`, `caption`, `x`, `y`, `color`. `null` removes a title. A missing key uses the first mapped column name. |
-| `info` | Optional. `entries`: `[key, value]` pairs in order; a value is a string, a number, a boolean or `null`. `position`: `right` (the default) or `bottom`. |
+| `info` | Optional. `entries`: `[key, value]` pairs in order; a value is a string, a number, a boolean or `null`. `position`: `right` or `bottom`; without it, `right`, or the place with the most room in a fixed size. |
 | `theme` | `style`, `format`, and the overrides `width`, `height`, `size`, `legend` |
 
 ### Column types
@@ -192,9 +192,16 @@ A style can also list theme color names as its palette: the `paper` and `dark` s
 - `height` alone fixes the height and keeps the reflow of the width.
 - In reflow, the text keeps its px size, and the height follows the aspect ratio (at least 240 px).
 - Below 560 px of width, a right legend moves to the bottom.
-- A format with `shrink` in `theme.json` (`slide`: 0.7) makes the text of the legend and the info table smaller, in steps of 5%, down to that share of its size, until they fit: a right column of at most 25% of the width, one legend column, no label or key with an ellipsis, and no "+N more" row.
-- `aspect` is the shape of each panel, height / width: `1` gives square panels (for observed-against-predicted plots, with the same `limits` on x and y). The panels shrink in one direction to get that shape. A `screen` plot without `height` changes its height instead (at most the width), so the panels fill it. In a fixed size, the spare height goes half above and half below the panels, and a right legend stays next to them.
-- The title and the subtitle align left with the panels. They wrap to two lines at most and keep space for the toolbar on the right. The caption is at the bottom left.
+- A fixed size (`report`, `slide`, or a set `height`) chooses the layout of the legend and the info table:
+  1. It tries each on the right and at the bottom. A place that the spec sets (`theme(legend=)`, `info(position=)`) stays.
+  2. A format with `shrink` in `theme.json` (`slide`: 0.7) also tries their text smaller, in steps of 5%, down to that share of its size.
+  3. It keeps the layouts that cut the least: legend labels and info keys with an ellipsis, a second legend column, "+N more" info rows.
+  4. Of these, it keeps the layouts whose panel area is at most 10% below the largest one. It takes the largest text, then the places of the theme, then the largest area.
+- A `screen` plot keeps the places and the text size.
+- A format with `shrink` makes the facet strip text smaller (the same size for all strips) before it cuts a label, down to that share of its size.
+- `aspect` is the shape of each panel, height / width: `1` gives square panels (for observed-against-predicted plots, with the same `limits` on x and y). The panels shrink in one direction to get that shape. A `screen` plot without `height` changes its height instead (at most 1.2 times its usual height), so the panels fill it. The space that is left goes half on each side of the panels.
+- The title and the subtitle align left with the panels and wrap to two lines at most. A `screen` plot keeps room on the right for the toolbar; a fixed size uses the full width. The caption is at the bottom left.
+- A bottom info table puts its entries in up to 3 columns, as many as fit on one line each; else one column whose values wrap.
 - `src/metrics.js` holds the glyph widths of each style font for the layout. CJK characters are one em wide.
 
 ### Info table

@@ -19,13 +19,20 @@ export function place({ ns, grid, kind, home, legend, info, fonts, W, H }) {
   const gap = Math.round(s * 0.8);
   const { title, subtitle, caption, x: xTitle, y: yTitle } = ns.labels;
   const at = (position) => (info?.position === position ? info : null);
-  const headW = W - 2 * pad - Math.min(180, W * TOOLBAR);
+  const xt = xTitle ? fonts.axisTitle * 1.7 : 0;
+  const yt = yTitle ? fonts.axisTitle * 1.7 : 0;
+  // The title starts at the left edge of the panels. A screen plot keeps room on the right for the toolbar; a fixed
+  // format (copied as a picture) uses the full width, less the y axis title and tick labels on the left.
+  const yLabels = d3.max(grid.panels, (p, i) => {
+    const t = ticks(kind.y, home[i].y, 5, ns.scales.y?.format);
+    return d3.max(t.major, (v) => tw(t.format(v), fonts.tick));
+  });
+  const left = yt + (yLabels ?? 0) + TICK.size + TICK.padding + 3;
+  const headW = W - 2 * pad - (theme.fixedFormat ? left : Math.min(180, W * TOOLBAR));
   const titleLines = title ? wrapText(title, fonts.title, headW, true, metrics) : [];
   const subtitleLines = subtitle ? wrapText(subtitle, fonts.subtitle, headW, false, metrics) : [];
   const head = titleLines.length * fonts.title * 1.25 + subtitleLines.length * fonts.subtitle * 1.4;
   const top = pad + head + (head ? s * 0.7 : 0);
-  const xt = xTitle ? fonts.axisTitle * 1.7 : 0;
-  const yt = yTitle ? fonts.axisTitle * 1.7 : 0;
   const cap = caption ? fonts.tick * 1.8 : 0;
   const rightW = Math.max(legend && !legend.horizontal ? legend.width : 0, at("right")?.width ?? 0);
   const right = rightW ? rightW + s * 1.5 : 0;
@@ -138,13 +145,17 @@ export function place({ ns, grid, kind, home, legend, info, fonts, W, H }) {
     showY: showY(p),
   }));
 
+  // A format with "shrink" makes the strip text smaller (all strips the same) before it cuts a label.
+  const stripRoom = (p) => [p.strips.top != null && [p.strips.top, innerW], p.strips.right != null && [p.strips.right, innerH]].filter(Boolean);
+  const stripScale = Math.max(theme.shrink ?? 1, Math.min(1, d3.min(grid.panels.flatMap(stripRoom), ([t, w]) => (w - 8) / tw(t, fonts.strip, true)) ?? 1));
+  const stripSize = Math.round(fonts.strip * stripScale * 10) / 10;
   const strips = [];
   grid.panels.forEach((p, i) => {
     const b = panels[i];
     const left = b.x + b.ml;
-    const label = (text, width) => fitText(text, fonts.strip, width - 8, true, metrics);
-    if (p.strips.top != null) strips.push({ x: left, y: b.y - wrapStrip - topStrip, w: innerW, h: strip, text: label(p.strips.top, innerW), full: p.strips.top });
-    if (p.strips.right != null) strips.push({ x: left + innerW + 2, y: b.y, w: strip, h: innerH, text: label(p.strips.right, innerH), full: p.strips.right, vertical: true });
+    const label = (text, width) => fitText(text, stripSize, width - 8, true, metrics);
+    if (p.strips.top != null) strips.push({ x: left, y: b.y - wrapStrip - topStrip, w: innerW, h: strip, text: label(p.strips.top, innerW), full: p.strips.top, size: stripSize });
+    if (p.strips.right != null) strips.push({ x: left + innerW + 2, y: b.y, w: strip, h: innerH, text: label(p.strips.right, innerH), full: p.strips.right, vertical: true, size: stripSize });
   });
 
   const first = panels[0];

@@ -177,8 +177,8 @@ class Plot:
     def info(self, entries, **options) -> Plot:
         """A key/value table about the data or the experiment: info({"location": "hayama"}, position="right"). None removes it."""
         _check_keys(options, GRAMMAR["info"], "info()")
-        position = options.get("position", "right")
-        if position not in GRAMMAR["infoPosition"]:
+        position = options.get("position")
+        if position is not None and position not in GRAMMAR["infoPosition"]:
             _fail("info()", "position", position, GRAMMAR["infoPosition"])
         if entries is None:
             return self._with(info=None)
@@ -188,7 +188,10 @@ class Plot:
             pairs = list(entries)
         else:
             raise ValueError("info(): entries must be a dict or a list of (key, value) pairs")
-        return self._with(info={"entries": [_info_entry(pair) for pair in pairs], "position": position})
+        info = {"entries": [_info_entry(pair) for pair in pairs]}
+        if position is not None:
+            info["position"] = position
+        return self._with(info=info)
 
     def theme(self, style="pastel", **options) -> Plot:
         """The look (style) and the output size (format): theme("wota", format="slide")."""

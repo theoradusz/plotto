@@ -7,12 +7,13 @@ export function normalize(spec, overrides = {}) {
   if (typeof spec?.spec === "function") spec = spec.spec(); // a builder
   if (spec?.version !== 1) throw new Error("plotto: unknown spec version");
   const theme = resolveTheme({ ...spec.theme, ...overrides });
+  theme.legendSet = (overrides.legend ?? spec.theme?.legend) != null; // a legend place from the spec, not the default
   const tables = spec.data.map(toTable);
   const layers = spec.layers.map((l) => resolveLayer(l, spec.mapping ?? {}, tables, theme));
   if (!layers.length) throw new Error("plotto: the plot has no layers. Add one, for example .line() or .point()");
   const facet = resolveFacet(spec.facet);
   const labels = { ...defaultLabels(layers), ...spec.labels };
-  const info = spec.info?.entries?.length ? { entries: spec.info.entries, position: spec.info.position ?? "right" } : null;
+  const info = spec.info?.entries?.length ? { entries: spec.info.entries, position: spec.info.position ?? "right", set: !!spec.info.position } : null;
   return { tables, layers, facet, scales: spec.scales ?? {}, labels, info, theme };
 }
 

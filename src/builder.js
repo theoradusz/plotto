@@ -109,12 +109,12 @@ class Builder {
   // A key/value table about the data or the experiment: info({ location: "hayama" }, { position: "right" }). null removes it.
   info(entries, options = {}) {
     checkKeys(options, GRAMMAR.info, "info()");
-    const position = options.position ?? "right";
-    if (!GRAMMAR.infoPosition.includes(position)) fail("info()", "position", position, GRAMMAR.infoPosition);
+    const { position } = options;
+    if (position !== undefined && !GRAMMAR.infoPosition.includes(position)) fail("info()", "position", position, GRAMMAR.infoPosition);
     if (entries === null || entries === undefined) return this.#with({ info: null });
     const pairs = Array.isArray(entries) ? entries : typeof entries === "object" ? Object.entries(entries) : null;
     if (!pairs) throw new Error("info(): entries must be an object or a list of [key, value] pairs");
-    return this.#with({ info: { entries: pairs.map((pair) => infoEntry(pair)), position } });
+    return this.#with({ info: { entries: pairs.map((pair) => infoEntry(pair)), ...(position ? { position } : {}) } });
   }
 
   theme(style = "pastel", options = {}) {
