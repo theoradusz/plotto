@@ -185,13 +185,14 @@ A style can also list theme color names as its palette: the `paper` and `dark` s
 |---|---|---|---|
 | `screen` (default) | 900 × 500 | 12 | Follows the element or cell width (reflow) |
 | `report` | 640 × 400 | 10 | Fixed |
-| `slide` | 960 × 600 | 22 | Fixed. Sized for the body of a 16:9 slide, below its title, with room for comments on the right. |
+| `slide` | 960 × 600 | 22 | Fixed. Sized for the body of a 16:9 slide, below its title, with room for comments on the right. A long legend or info table gets smaller text (see below). |
 
 - A style in `theme.json` lists only what differs from `pastel`. `weight` scales the line width (and the point radius by its square root).
 - `width` fixes the size. The height then follows the aspect ratio of the format, unless `height` is set too.
 - `height` alone fixes the height and keeps the reflow of the width.
 - In reflow, the text keeps its px size, and the height follows the aspect ratio (at least 240 px).
 - Below 560 px of width, a right legend moves to the bottom.
+- A format with `shrink` in `theme.json` (`slide`: 0.7) makes the text of the legend and the info table smaller, in steps of 5%, down to that share of its size, until they fit: a right column of at most 25% of the width, one legend column, no label or key with an ellipsis, and no "+N more" row.
 - `aspect` is the shape of each panel, height / width: `1` gives square panels (for observed-against-predicted plots, with the same `limits` on x and y). The panels shrink in one direction to get that shape. A `screen` plot without `height` changes its height instead (at most the width), so the panels fill it. In a fixed size, the spare height goes half above and half below the panels, and a right legend stays next to them.
 - The title and the subtitle align left with the panels. They wrap to two lines at most and keep space for the toolbar on the right. The caption is at the bottom left.
 - `src/metrics.js` holds the glyph widths of each style font for the layout. CJK characters are one em wide.

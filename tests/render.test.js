@@ -264,6 +264,20 @@ test("a tick at the top edge moves the panels down, off the subtitle", () => {
   assert.ok(edge.panels[0].y > edge.area.y);
 });
 
+test("a slide makes long legend and info text smaller until it fits; a screen plot keeps the size", () => {
+  const names = ["bk04, not compensated", "bk04, air-shape model", "bk04, air-shape and tap residual model", "bk02, steady runs (no fouling)"];
+  const long = names.flatMap((g, k) => Array.from({ length: 10 }, (_, i) => ({ t: i, v: i * k, g })));
+  const p = plot(long, { x: "t", y: "v", color: "g" }).line().info({ site: "Hayama", "chlorine dose": "2.5 mg/L", "contact time": "30 min" });
+  const slide = figure(p.theme("pastel", { format: "slide" }).spec(), { document });
+  assert.ok(slide.fonts.legend < 21, `slide legend text: ${slide.fonts.legend}`);
+  assert.ok(slide.fonts.legend >= 21 * 0.7);
+  assert.equal(slide.info.cut, 0);
+  const screen = figure(p.spec(), { document, width: 900 });
+  assert.equal(screen.fonts.legend, 11);
+  const short = figure(base.line().theme("pastel", { format: "slide" }).spec(), { document });
+  assert.equal(short.fonts.legend, 21, "a short legend keeps the slide size");
+});
+
 test("a method returns a new builder and keeps the old one", () => {
   const lines = base.line();
   assert.equal(base.spec().layers.length, 0);

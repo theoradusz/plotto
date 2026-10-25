@@ -142,6 +142,7 @@
       "width": 960,
       "height": 600,
       "size": 22,
+      "shrink": 0.7,
       "line": 2.5,
       "point": 4,
       "reflow": false

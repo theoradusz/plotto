@@ -6,6 +6,10 @@ Write each change under "Unreleased". `scripts/release.sh` moves them to the new
 
 ## Unreleased
 
+### Changed
+
+- In the `slide` format, a long legend or info table gets smaller text. The text gets smaller until it fits, to 70% of its size at most.
+
 ## 0.4.0 – 2026-10-25
 
 ### Added
