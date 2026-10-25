@@ -124,7 +124,7 @@
   "formats": {
     "screen": {
       "width": 900,
-      "height": 450,
+      "height": 500,
       "size": 12,
       "line": 1.5,
       "point": 2.5,

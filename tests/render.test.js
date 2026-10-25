@@ -217,6 +217,13 @@ test("info() checks its entries and keeps the old builder", () => {
   assert.equal(withInfo.info(null).spec().info, undefined);
 });
 
+test("every mark of a box plot is clipped to the panel", () => {
+  const svg = renderSVG(plot(rows, { x: "g", y: "v" }).box().y({ limits: [-0.5, 0.5] }).spec());
+  const marks = svg.match(/<g aria-label="(rule|bar|tick|dot)"[^>]*>/g);
+  assert.ok(marks.length >= 3, marks.join("\n"));
+  for (const g of marks) assert.match(g, /clip-path=/, g);
+});
+
 test("a method returns a new builder and keeps the old one", () => {
   const lines = base.line();
   assert.equal(base.spec().layers.length, 0);
