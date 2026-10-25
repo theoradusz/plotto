@@ -1,6 +1,6 @@
 {
   "name": "plotto",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Grammar-of-graphics plots for notebooks, web pages and slides with one renderer.",
   "license": "MIT",
   "homepage": "https://theoradusz.github.io/plotto/",
