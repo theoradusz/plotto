@@ -6,6 +6,8 @@ Write each change under "Unreleased". `scripts/release.sh` moves them to the new
 
 ## Unreleased
 
+## 0.5.0 – 2026-10-25
+
 ### Changed
 
 - In a fixed size (`slide`, `report`), plotto puts the legend and the info table on the right or at the bottom. It also makes their text smaller in the `slide` format. It keeps the layout that gives the plot more room. When you set the place, it stays.
