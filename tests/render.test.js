@@ -5,6 +5,7 @@ import { test } from "node:test";
 import { JSDOM } from "jsdom";
 import { plot } from "../src/builder.js";
 import { figure } from "../src/figure.js";
+import { slideFigure } from "../src/interact.js";
 import { renderSVG } from "../src/render.mjs";
 import { FORMATS, STYLES } from "../src/theme.js";
 
@@ -102,9 +103,29 @@ test("a narrow figure moves the legend to the bottom", () => {
   assert.equal(figure(base.line(), { document, width: 900 }).legend.horizontal, false);
 });
 
-test("long category labels rotate", () => {
+test("long category labels wrap at spaces, and rotate only when a word is too long", () => {
   const long = ["a very long category name", "another long category name", "a third long category name"].map((x, i) => ({ x, y: i }));
-  assert.equal(figure(plot(long, { x: "x", y: "y" }).bar(), { document, width: 400 }).layout.rotateX, true);
+  const wrapped = figure(plot(long, { x: "x", y: "y" }).bar(), { document, width: 400 }).layout;
+  assert.equal(wrapped.rotateX, false);
+  assert.ok(wrapped.panels[0].wrapX.get("a very long category name").length > 1);
+  const words = ["a_very_long_category_name", "another_long_category_name"].map((x, i) => ({ x, y: i }));
+  const rotated = figure(plot(words, { x: "x", y: "y" }).bar(), { document, width: 300 }).layout;
+  assert.equal(rotated.rotateX, true);
+  assert.ok(rotated.panels[0].x >= 0, "the first rotated label stays in the figure");
+});
+
+test("aspect 1 gives square panels; a screen plot changes its height for them", () => {
+  const sq = (p, opts) => {
+    const b = figure(p.spec(), { document, ...opts }).layout.panels[0];
+    return Math.abs(b.innerW - b.innerH) < 0.5;
+  };
+  const p = base.point().facet("k").theme("pastel", { aspect: 1 });
+  assert.ok(sq(p, { width: 900 }));
+  const f = figure(p.spec(), { document, width: 900 });
+  assert.notEqual(f.H, 500);
+  assert.ok(sq(base.point().theme("pastel", { format: "slide", aspect: 1 })), "a fixed size keeps its height and narrows the panels");
+  assert.equal(figure(base.point().theme("pastel", { format: "slide", aspect: 1 }).spec(), { document }).H, 600);
+  assert.throws(() => base.theme("pastel", { aspect: 0 }), /aspect must be a positive number/);
 });
 
 test("free y gives each panel its own y domain; a shared axis gives one domain", () => {
@@ -222,6 +243,25 @@ test("every mark of a box plot is clipped to the panel", () => {
   const marks = svg.match(/<g aria-label="(rule|bar|tick|dot)"[^>]*>/g);
   assert.ok(marks.length >= 3, marks.join("\n"));
   for (const g of marks) assert.match(g, /clip-path=/, g);
+});
+
+test("copy for a slide draws the current view at the slide size", () => {
+  const spec = base.line().theme("wota", { width: 500 }).spec();
+  const state = figure(spec, { document });
+  const zoomed = state.home.map((d) => ({ ...d, x: [2, 8] }));
+  const slide = slideFigure(spec, { ...state, domains: zoomed, hidden: new Set(["b"]) });
+  assert.equal(`${slide.W}x${slide.H}`, "960x600");
+  assert.equal(slide.theme.style, "wota");
+  assert.deepEqual(slide.domains[0].x, [2, 8]);
+  assert.ok(slide.hidden.has("b"));
+});
+
+test("a tick at the top edge moves the panels down, off the subtitle", () => {
+  const p = base.line().labels({ title: "T", subtitle: "S" });
+  const free = figure(p.spec(), { document }).layout;
+  const edge = figure(p.y({ limits: [-100, 100] }).spec(), { document }).layout;
+  assert.equal(free.panels[0].y, free.area.y);
+  assert.ok(edge.panels[0].y > edge.area.y);
 });
 
 test("a method returns a new builder and keeps the old one", () => {

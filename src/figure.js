@@ -6,7 +6,7 @@ import { facetPanels } from "./facets.js";
 import { drawInfo, infoModel } from "./info.js";
 import { LAYERS } from "./layers.js";
 import { drawLegend, legendModel } from "./legend.js";
-import { place, TICK } from "./layout.js";
+import { LINE, place, TICK } from "./layout.js";
 import { AXIS_CHANNELS, axisKind, colorScale, ticks, trainDomain } from "./scales.js";
 import { normalize } from "./spec.js";
 import { svgElement, svgText } from "./svg.js";
@@ -15,6 +15,7 @@ import { layerEdges, makeView } from "./views.js";
 
 const NARROW = 560; // px: below this width, a right legend moves to the bottom
 const MIN_HEIGHT = 240; // px: the smallest height of a reflowed figure
+const ASPECT_GROWTH = 1.2; // a theme aspect makes a reflowed figure at most this much taller
 
 // options: document (the browser or jsdom), width (lay out at this width), domains and hidden (keep a view after a resize).
 export function figure(spec, { document: doc = globalThis.document, width, domains, hidden = new Set() } = {}) {
@@ -22,7 +23,7 @@ export function figure(spec, { document: doc = globalThis.document, width, domai
   const theme = ns.theme;
   const W = Math.round(width ?? theme.width);
   const reflowed = width && theme.reflow && !theme.fixedHeight;
-  const H = reflowed ? Math.max(MIN_HEIGHT, Math.round((W * theme.height) / theme.width)) : theme.height;
+  let H = reflowed ? Math.max(MIN_HEIGHT, Math.round((W * theme.height) / theme.width)) : theme.height;
   if (theme.legend === "right" && W < NARROW) theme.legend = "bottom";
   const fonts = fontSizes(theme);
   const grid = facetPanels(ns);
@@ -32,10 +33,20 @@ export function figure(spec, { document: doc = globalThis.document, width, domai
   for (const p of grid.panels) p.views = ns.layers.map((layer, li) => makeView(ctx, layer, p.rows[li], new Set()));
   const home = homeDomains(ns, grid, kind);
   const horizontal = theme.legend === "bottom";
-  const info = infoModel(ns, fonts, { W, H, narrow: W < NARROW });
-  const above = info?.position === "right" ? info.height + fonts.base : 0; // the info card sits above a right legend
-  const legend = legendModel(ns, color, fonts, { horizontal, maxWidth: W * 0.9, maxHeight: H * 0.8 - above });
-  const layout = place({ ns, grid, kind, home, legend, info, fonts, W, H });
+  const arrange = (H) => {
+    const info = infoModel(ns, fonts, { W, H, narrow: W < NARROW });
+    const above = info?.position === "right" ? info.height + fonts.base : 0; // the info card sits above a right legend
+    const legend = legendModel(ns, color, fonts, { horizontal, maxWidth: W * 0.9, maxHeight: H * 0.8 - above });
+    return { info, legend, layout: place({ ns, grid, kind, home, legend, info, fonts, W, H }) };
+  };
+  let { info, legend, layout } = arrange(H);
+  // aspect: when the height follows the width, it changes so that the panels get their shape, up to 1.2 times the
+  // usual height; beyond that, the panels get narrower.
+  if (theme.aspect && theme.fitHeight) {
+    const fit = H + grid.nrow * (layout.room.w * theme.aspect - layout.room.h);
+    H = Math.round(Math.min(H * ASPECT_GROWTH, Math.max(MIN_HEIGHT, fit)));
+    ({ info, legend, layout } = arrange(H));
+  }
 
   const svg = svgElement(doc, "svg", {
     xmlns: "http://www.w3.org/2000/svg",
@@ -106,7 +117,9 @@ function drawPanel(state, p, i) {
   marks.push(...layers.flatMap((l) => l.marks));
   if (box.showX) {
     const rotate = box.rotateX ? { tickRotate: -40, textAnchor: "end" } : {};
-    marks.push(Plot.axisX(ax.major, { ...axisStyle, ...rotate, anchor: "bottom", tickFormat: ax.format }));
+    const wrapped = (v) => box.wrapX.get(String(v))?.join("\n") ?? ax.format(v);
+    const wrap = box.wrapX.size ? { tickFormat: wrapped, lineHeight: LINE } : { tickFormat: ax.format };
+    marks.push(Plot.axisX(ax.major, { ...axisStyle, ...rotate, anchor: "bottom", ...wrap }));
   }
   if (box.showY) marks.push(Plot.axisY(ay.major, { ...axisStyle, anchor: "left", tickFormat: ay.format }));
   const plot = Plot.plot({

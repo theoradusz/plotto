@@ -126,7 +126,7 @@ def box():
     return (
         plot(turbidity(), x="sensor", y="value")
         .point(color="sensor", jitter=0.6, size=1.5, alpha=0.3)
-        .box(alpha=0.6)
+        .box(color="sensor")
         .labels(title="Turbidity by sensor", x=None, y="turbidity (NTU)")
         .theme(legend="none")
     )
@@ -286,7 +286,7 @@ def log_axes():
 
 
 def styles():
-    """The same plot in each style, and the slide format (1280 × 720 px, large text) with the wota style."""
+    """The same plot in each style, and the slide format (960 × 600 px, large text) with the wota style."""
     base = lines().labels(subtitle=None, caption=None)
     out = [base.theme(name).labels(title=f'theme("{name}")') for name in ("pastel", "wota", "paper", "dark")]
     out.append(facets().theme("wota", format="slide").labels(title='theme("wota", format="slide")'))
@@ -331,7 +331,7 @@ def heatmap():
 
 
 def category_order():
-    """On a category axis, limits sets the categories and their order. Labels too wide for their space rotate."""
+    """On a category axis, limits sets the categories and their order. Labels too wide for their space wrap."""
     df = turbidity()
     names = {"sensor A": "inlet sensor (A)", "sensor B": "middle sensor (B)", "sensor C": "outlet sensor (C)"}
     df = df.assign(position=df.sensor.map(names))
@@ -340,6 +340,22 @@ def category_order():
         .box()
         .x(limits=["outlet sensor (C)", "middle sensor (B)", "inlet sensor (A)"])
         .labels(title="Turbidity, outlet first", x=None, y="turbidity (NTU)")
+    )
+
+
+def square():
+    """theme(aspect=1) makes square panels, for observed-against-predicted plots. Give x and y the same limits."""
+    cal = load("calibration")
+    slope, intercept = np.polyfit(cal.concentration, cal.absorbance, 1)
+    cal = cal.assign(predicted=slope * cal.concentration + intercept)
+    return (
+        plot(cal, x="predicted", y="absorbance", color="batch")
+        .point()
+        .abline(slope=1, intercept=0, dash="dashed", color="ink")
+        .x(limits=[-0.05, 0.65])
+        .y(limits=[-0.05, 0.65])
+        .labels(title="Calibration: measured against predicted", x="predicted absorbance", y="measured absorbance")
+        .theme(aspect=1)
     )
 
 
@@ -423,7 +439,7 @@ PAGES = {
         "file": "scales.html",
         "title": "Scales and legends",
         "sections": {
-            "Axes": [limits, log_axes, category_order],
+            "Axes": [limits, log_axes, category_order, square],
             "Titles and legends": [titles, info, legends],
             "Interaction": [interaction],
         },

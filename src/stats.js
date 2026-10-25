@@ -102,6 +102,16 @@ export function bin(cols, n, edges, density) {
   return out;
 }
 
+// Tukey box of one group: quartiles, whiskers at the last values within 1.5 IQR of the box, and the outliers.
+export function boxStats(values) {
+  const v = values.filter((y) => y !== null && Number.isFinite(y)).sort(d3.ascending);
+  const [q1, median, q3] = [0.25, 0.5, 0.75].map((p) => d3.quantile(v, p));
+  const iqr = q3 - q1;
+  const low = d3.min(v.filter((y) => y >= q1 - 1.5 * iqr));
+  const high = d3.max(v.filter((y) => y <= q3 + 1.5 * iqr));
+  return { n: v.length, q1, median, q3, low, high, outliers: v.filter((y) => y < low || y > high) };
+}
+
 // Gaussian kernel density per color, with the Silverman bandwidth, on a grid that covers the data ± 3 bandwidths.
 export function density(cols, n) {
   const out = { x: [], y: [], color: [], group: [] };

@@ -26,7 +26,7 @@ p.interactive()                     # the same plot with zoom, pan, hover and le
 p.theme("wota")                     # another style
 p.color(palette="aizome")           # another palette
 p.save("fig.png")                   # PNG; .svg for vector files
-p.theme("wota", format="slide").save("slide.png")   # 1280 × 720 px, large text
+p.theme("wota", format="slide").save("slide.png")   # 960 × 600 px, large text
 ```
 
 ```js
@@ -111,6 +111,7 @@ The table is a card on the right of the plot, or below it. A plot narrower than 
 - A legend click hides or shows a series. Two quick clicks on the same entry (within 300 ms) show only that series.
 - The toolbar shows at the top right when the pointer is on the plot:
   - copy as PNG;
+  - copy for a slide: the current view in the slide format, which pastes into Google Slides at 6.72 × 4.2 in (75% of the slide height), sharp;
   - download as PNG or SVG;
   - in interactive mode, also zoom box, pan, zoom in, zoom out and reset.
 - The output loads d3 and Observable Plot from `cdn.jsdelivr.net`. GitHub, nbviewer, or a page without network access shows the static SVG in the output.
@@ -125,10 +126,11 @@ The table is a card on the right of the plot, or below it. A plot narrower than 
 
 | Target | Use |
 |---|---|
-| Google Slides | PNG: `p.save("fig.png")`. Google Slides does not accept SVG. |
+| Google Slides | The "Copy for a slide" button, then paste under the slide title: 6.72 × 4.2 in, with room for comments on the right. Or a PNG: `p.save("fig.png")`. Google Slides does not accept SVG. |
 | PowerPoint, Keynote, documents | SVG: `p.save("fig.svg")`. The SVG uses the installed fonts. |
-| A slide layout | `p.theme(style, format="slide")`: 1280 × 720 px with large text |
+| A slide layout | `p.theme(style, format="slide")`: 960 × 600 px with large text |
 | A report column | `p.theme(style, format="report")`: 640 × 400 px |
+| Square panels | `p.theme(aspect=1)`, for observed-against-predicted plots. Give x and y the same `limits`. |
 | A given size | `p.save("fig.png", width=1600)` lays the plot out again at 1600 px. |
 | From the notebook | Use the copy button, which copies the current view as PNG. |
 
@@ -192,30 +194,26 @@ One-time setup:
 
 4. On npmjs.com, open the package `plotto` → Settings → Trusted publishing → GitHub Actions: repository `theoradusz/plotto`, workflow `release.yml`. Later versions then publish from GitHub with no token. The workflow skips a version that is already on npm.
 
-Each release:
+Each release (`main` takes changes only through a reviewed pull request):
 
-`main` takes changes only through a reviewed pull request, so a release has two steps.
+```bash
+# 1. Merge your changes into main through a pull request
 
-1. On `main`, with no uncommitted changes and the Python environment of the repo active, prepare the release:
+# 2. Prepare the release
+git switch main && git pull && source .venv/bin/activate
+scripts/release.sh 0.3.1
+#    → the pull request page opens: create it, get it approved and merged
 
-   ```
-   scripts/release.sh 0.3.0
-   ```
+# 3. Publish
+scripts/release.sh tag    # answer y
 
-   The script:
-   - checks that `main` is up to date with `origin/main` and that the version is new and higher;
-   - runs `npm test`, `npm run browser-test`, `pytest python/tests`, `ruff` and `black`;
-   - on a new branch `release/v0.3.0`, sets the version in `package.json`, `package-lock.json` and `python/plotto/__init__.py`, and builds the site in `docs/`;
-   - commits "release 0.3.0", pushes the branch and opens the pull request page.
-2. Create the pull request, then have it reviewed and merged.
-3. Tag the merged `main`:
+# 4. Check
+npm view plotto version && pip index versions python-plotto
+```
 
-   ```
-   scripts/release.sh tag
-   ```
-
-   The script pulls `main` and reads the version. It asks before it tags and pushes `v0.3.0`, then deletes the release branch.
-4. The pushed tag starts the release in the Actions tab. The packages are then at pypi.org/project/python-plotto and npmjs.com/package/plotto.
+- `scripts/release.sh X.Y.Z` checks that `main` is current and the version is new. It runs every test and lint. Then, on the branch `release/vX.Y.Z`, it sets the version in `package.json`, `package-lock.json` and `python/plotto/__init__.py`, builds `docs/`, commits and pushes.
+- `scripts/release.sh tag` tags the merged `main` as `vX.Y.Z`, asks before it pushes the tag, and deletes the release branch.
+- The pushed tag runs `.github/workflows/release.yml`, which publishes to PyPI and npm. Follow it in the Actions tab.
 
 To upgrade Observable Plot or d3:
 

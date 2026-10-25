@@ -199,6 +199,9 @@ class Plot:
             _fail("theme()", "format", options["format"], list(THEMES["formats"]))
         if "legend" in options and options["legend"] not in GRAMMAR["legend"]:
             _fail("theme()", "legend", options["legend"], GRAMMAR["legend"])
+        aspect = options.get("aspect")
+        if aspect is not None and (isinstance(aspect, bool) or not isinstance(aspect, (int, float)) or aspect <= 0):
+            raise ValueError("theme(): aspect must be a positive number (panel height / width), for example 1 for square panels")
         return self._with(theme={"style": style, **options})
 
     def interactive(self) -> Plot:

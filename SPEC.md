@@ -91,7 +91,7 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 | `tile` | x, y, color, tooltip | alpha | – | `cell` (two categories), `barX`/`barY` (one category), `rect` (two numbers) |
 | `text` | x, y, label, color | size, alpha | – | `text` |
 | `errorbar` | x, ymin, ymax, color | size, alpha | – | `ruleX` and two caps |
-| `box` | x, y, color | alpha | quartiles (Observable Plot) | `boxY` |
+| `box` | x, y, color | alpha (of the box fill, default 0.3) | Tukey box per category (`boxStats` in `stats.js`): quartiles, whiskers to the last values within 1.5 IQR, outliers | `barY` (q1 to q3, outlined in the series color), `tickY` (bold median and whisker caps), `ruleX` (whiskers), `dot` (outliers, in the series color) |
 
 | Option | Values | Meaning |
 |---|---|---|
@@ -120,7 +120,7 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 - The axis type is `type`, or else the type of the first mapped column: `time` → time, `string` → category, `number` → linear. `log` is a log10 axis.
 - The axis domain trains on the layer views, which include the statistics. For example, it includes the 0 of a bar and the top of a stack.
 - The first view is `limits` when it is set. A `null` bound keeps the data bound on that side, with its 5% space. Without limits, the first view is the data range plus 5% on each side.
-- A category axis shows the categories in the `limits` order, then in the `levels` order, then in natural sort order. Labels that are too wide for their band rotate by 40°.
+- A category axis shows the categories in the `limits` order, then in the `levels` order, then in natural sort order. A label that is too wide for its band wraps at its spaces, to 3 lines at most. If a word is still too wide, all labels rotate by 40°; a rotated label gets 60% of the panel height (at least 10 em) and ends with an ellipsis beyond it, and the left margin grows so that the first one is not cut off.
 - Continuous axes have major ticks and minor grid lines at the midpoints. A log axis has ticks at the powers of ten, with minor lines at 2–9 times each power.
 - Time labels are on one line. The pattern follows the tick step: `%Y-%m`, `%m-%d`, `%m-%d %H:%M` (more than one day in view), `%H:%M` or `%H:%M:%S`. `format`, a d3-format or d3-time-format string, replaces it.
 
@@ -136,7 +136,8 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 - A list of colors and a plotto scheme interpolate in Lab space. A d3 scheme name (such as `viridis` or `blues`) uses the d3 interpolator.
 - A continuous value outside the domain is `muted`. `clamp: true` gives it the end color.
 - All color mappings of one plot must use the same column.
-- A long legend wraps into columns. A label that is too long ends with an ellipsis.
+- A long legend wraps into columns.
+- A right legend keeps a narrow column (20% of the width, 110 to 200 px): a long label wraps to 3 lines at most, then ends with an ellipsis, and its full text is its SVG title. A bottom legend has one line per label.
 
 ## 6. Facets
 
@@ -171,7 +172,7 @@ A style can also list theme color names as its palette: the `paper` and `dark` s
 
 ## 7. Themes
 
-`theme(style, format=, width=, height=, size=, legend=)`.
+`theme(style, format=, width=, height=, size=, legend=, aspect=)`.
 
 | Style | Look |
 |---|---|
@@ -184,13 +185,14 @@ A style can also list theme color names as its palette: the `paper` and `dark` s
 |---|---|---|---|
 | `screen` (default) | 900 × 500 | 12 | Follows the element or cell width (reflow) |
 | `report` | 640 × 400 | 10 | Fixed |
-| `slide` | 1280 × 720 | 20 | Fixed |
+| `slide` | 960 × 600 | 22 | Fixed. Sized for the body of a 16:9 slide, below its title, with room for comments on the right. |
 
 - A style in `theme.json` lists only what differs from `pastel`. `weight` scales the line width (and the point radius by its square root).
 - `width` fixes the size. The height then follows the aspect ratio of the format, unless `height` is set too.
 - `height` alone fixes the height and keeps the reflow of the width.
 - In reflow, the text keeps its px size, and the height follows the aspect ratio (at least 240 px).
 - Below 560 px of width, a right legend moves to the bottom.
+- `aspect` is the shape of each panel, height / width: `1` gives square panels (for observed-against-predicted plots, with the same `limits` on x and y). The panels shrink in one direction to get that shape. A `screen` plot without `height` changes its height instead (at most the width), so the panels fill it. In a fixed size, the spare height goes half above and half below the panels, and a right legend stays next to them.
 - The title and the subtitle align left with the panels. They wrap to two lines at most and keep space for the toolbar on the right. The caption is at the bottom left.
 - `src/metrics.js` holds the glyph widths of each style font for the layout. CJK characters are one em wide.
 
@@ -217,7 +219,8 @@ A style can also list theme color names as its palette: the `paper` and `dark` s
 |---|---|
 | Width | A `screen` plot lays out at the element width, and again 100 ms after a width change (minimum 320 px). A fixed size scales down to fit. |
 | Toolbar | A flat, square bar of icon buttons at the top right. It shows when the pointer is on the plot, and always on touch screens. The button size is 1/34 of the figure width, from 22 to 30 px. The active mode has the accent color. |
-| Static buttons | Copy as PNG; Download (PNG or SVG) |
+| Static buttons | Copy as PNG; Copy for a slide; Download (PNG or SVG) |
+| Copy for a slide | Draws the current view (zoom, hidden series) again in the `slide` format, with the plot's style. The clipboard gets a PNG of 1935 × 1209 px and an HTML `<img>` of 645 × 403 px. Google Slides pastes the HTML at 96 px per inch: 6.72 × 4.2 in, 75% of the slide height, at 3× sharpness (288 px per inch). |
 | Interactive buttons | Also zoom box and pan (the active mode is highlighted), zoom in, zoom out, reset |
 
 With `interactive: true`:

@@ -139,9 +139,9 @@
       "reflow": false
     },
     "slide": {
-      "width": 1280,
-      "height": 720,
-      "size": 20,
+      "width": 960,
+      "height": 600,
+      "size": 22,
       "line": 2.5,
       "point": 4,
       "reflow": false
