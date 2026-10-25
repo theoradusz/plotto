@@ -194,15 +194,28 @@ One-time setup:
 
 Each release:
 
-1. Set the same version in `package.json` and in `python/plotto/__init__.py` (a test verifies that they agree).
-2. Commit, then tag and push:
+`main` takes changes only through a reviewed pull request, so a release has two steps.
+
+1. On `main`, with no uncommitted changes and the Python environment of the repo active, prepare the release:
 
    ```
-   git tag v0.1.0
-   git push origin v0.1.0
+   scripts/release.sh 0.3.0
    ```
 
-3. The Actions tab shows the release. The packages are then at pypi.org/project/python-plotto and npmjs.com/package/plotto.
+   The script:
+   - checks that `main` is up to date with `origin/main` and that the version is new and higher;
+   - runs `npm test`, `npm run browser-test`, `pytest python/tests`, `ruff` and `black`;
+   - on a new branch `release/v0.3.0`, sets the version in `package.json`, `package-lock.json` and `python/plotto/__init__.py`, and builds the site in `docs/`;
+   - commits "release 0.3.0", pushes the branch and opens the pull request page.
+2. Create the pull request, then have it reviewed and merged.
+3. Tag the merged `main`:
+
+   ```
+   scripts/release.sh tag
+   ```
+
+   The script pulls `main` and reads the version. It asks before it tags and pushes `v0.3.0`, then deletes the release branch.
+4. The pushed tag starts the release in the Actions tab. The packages are then at pypi.org/project/python-plotto and npmjs.com/package/plotto.
 
 To upgrade Observable Plot or d3:
 
