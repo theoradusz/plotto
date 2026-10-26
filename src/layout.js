@@ -29,9 +29,17 @@ export function place({ ns, grid, kind, home, legend, info, fonts, W, H }) {
   });
   const left = yt + (yLabels ?? 0) + TICK.size + TICK.padding + 3;
   const headW = W - 2 * pad - (theme.fixedFormat ? left : Math.min(180, W * TOOLBAR));
-  const titleLines = title ? wrapText(title, fonts.title, headW, true, metrics) : [];
-  const subtitleLines = subtitle ? wrapText(subtitle, fonts.subtitle, headW, false, metrics) : [];
-  const head = titleLines.length * fonts.title * 1.25 + subtitleLines.length * fonts.subtitle * 1.4;
+  // A format with "shrink" (slide) makes a long title or subtitle smaller, down to that share, so that it stays on one
+  // line. Text that does not fit even then keeps its size and wraps.
+  const oneLine = (text, size, bold) => {
+    const k = text ? headW / tw(text, size, bold) : 1;
+    return k < 1 && k >= (theme.shrink ?? 1) ? Math.floor(size * k * 10) / 10 : size;
+  };
+  const titleSize = oneLine(title, fonts.title, true);
+  const subtitleSize = oneLine(subtitle, fonts.subtitle, false);
+  const titleLines = title ? wrapText(title, titleSize, headW, true, metrics) : [];
+  const subtitleLines = subtitle ? wrapText(subtitle, subtitleSize, headW, false, metrics) : [];
+  const head = titleLines.length * titleSize * 1.25 + subtitleLines.length * subtitleSize * 1.4;
   const top = pad + head + (head ? s * 0.7 : 0);
   const cap = caption ? fonts.tick * 1.8 : 0;
   const rightW = Math.max(legend && !legend.horizontal ? legend.width : 0, at("right")?.width ?? 0);
@@ -167,8 +175,8 @@ export function place({ ns, grid, kind, home, legend, info, fonts, W, H }) {
   const panelsBottom = d3.max(panels, (b) => b.y + b.h);
   const texts = [];
   let y = pad;
-  for (const line of titleLines) texts.push({ text: line, attrs: { x: innerLeft, y: (y += fonts.title * 1.05), "font-size": fonts.title, "font-weight": "bold", fill: theme.ink, "text-anchor": "start" } }), (y += fonts.title * 0.2);
-  for (const line of subtitleLines) texts.push({ text: line, attrs: { x: innerLeft, y: (y += fonts.subtitle * 1.3), "font-size": fonts.subtitle, fill: theme.muted, "text-anchor": "start" } });
+  for (const line of titleLines) texts.push({ text: line, attrs: { x: innerLeft, y: (y += titleSize * 1.05), "font-size": titleSize, "font-weight": "bold", fill: theme.ink, "text-anchor": "start" } }), (y += titleSize * 0.2);
+  for (const line of subtitleLines) texts.push({ text: line, attrs: { x: innerLeft, y: (y += subtitleSize * 1.3), "font-size": subtitleSize, fill: theme.muted, "text-anchor": "start" } });
   if (xTitle) texts.push({ text: xTitle, attrs: { x: (innerLeft + innerRight) / 2, y: panelsBottom + fonts.axisTitle * 1.35, "text-anchor": "middle", "font-size": fonts.axisTitle, fill: theme.muted } });
   if (yTitle) {
     const cy = area.y + (area.h - d3.sum(mb)) / 2;
