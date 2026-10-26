@@ -6,6 +6,8 @@ Write each change under "Unreleased". `scripts/release.sh` moves them to the new
 
 ## Unreleased
 
+## 0.5.1 – 2026-10-26
+
 ### Changed
 
 - The slide picture is 7.2 in wide. It was 6.72 in.
