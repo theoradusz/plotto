@@ -6,6 +6,8 @@ Write each change under "Unreleased". `scripts/release.sh` moves them to the new
 
 ## Unreleased
 
+## 0.5.2 – 2026-10-26
+
 ### Changed
 
 - In a fixed size, a very flat panel does not get more width from the layout. Thus stacked panels in the `slide` format keep the legend on the right and get more height.
