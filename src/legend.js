@@ -61,20 +61,23 @@ export function legendModel(ns, color, fonts, { horizontal, maxWidth, maxHeight 
     const height = d3.max(columns, (column) => column.at(-1).y + column.at(-1).h) ?? titleH;
     return { kind: "swatches", title, titleH, key, rowH, lineH, items, width: Math.max(titleW, x - fonts.legend), height, horizontal };
   }
-  let x = 0;
-  let y = titleH;
+  // A bottom legend has its title on the first row, before the items, so it takes one row less.
+  const indent = title ? titleW + fonts.legend : 0;
+  let x = indent;
+  let y = 0;
   for (const it of items) {
-    if (x > 0 && x + it.w > maxWidth) [x, y] = [0, y + rowH];
+    if (x > indent && x + it.w > maxWidth) [x, y] = [indent, y + rowH];
     Object.assign(it, { x, y });
     x += it.w + fonts.legend * 1.5;
   }
-  const w = Math.max(titleW, d3.max(items, (it) => it.x + it.w) ?? 0);
-  return { kind: "swatches", title, titleH, key, rowH, lineH, items, width: w, height: y + rowH, horizontal };
+  const w = d3.max(items, (it) => it.x + it.w) ?? titleW;
+  return { kind: "swatches", title, titleH: 0, inline: true, key, rowH, lineH, items, width: w, height: y + rowH, horizontal };
 }
 
 export function drawLegend(doc, model, theme, fonts, hidden = new Set()) {
   const g = svgElement(doc, "g", { class: "pt-legend", "font-size": fonts.legend });
-  if (model.title) g.append(svgText(doc, model.title, { y: fonts.legend, "font-weight": "bold", "font-size": fonts.legend + 1, fill: theme.ink }));
+  const titleY = model.inline ? { y: model.rowH / 2, dy: "0.35em" } : { y: fonts.legend };
+  if (model.title) g.append(svgText(doc, model.title, { ...titleY, "font-weight": "bold", "font-size": fonts.legend + 1, fill: theme.ink }));
   if (model.kind === "ramp") drawRamp(doc, g, model, theme, fonts);
   else model.items.forEach((it, i) => g.append(swatch(doc, model, it, i, theme, hidden.has(it.value))));
   return g;

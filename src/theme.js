@@ -9,7 +9,7 @@ export const PALETTES = Object.keys(THEMES.palettes);
 export const SCHEMES = Object.keys(THEMES.schemes);
 const ROLES = ["ink", "muted", "grid", "tick", "strip", "accent", "background"];
 
-export function resolveTheme({ style = "pastel", format = "screen", legend = "right", ...overrides } = {}) {
+export function resolveTheme({ style = "pastel", format = "screen", legend, ...overrides } = {}) {
   if (!THEMES.styles[style]) throw new Error(`theme(): unknown style "${style}". Valid: ${STYLES.join(", ")}`);
   if (!THEMES.formats[format]) throw new Error(`theme(): unknown format "${format}". Valid: ${FORMATS.join(", ")}`);
   const base = THEMES.styles.pastel;
@@ -17,7 +17,7 @@ export function resolveTheme({ style = "pastel", format = "screen", legend = "ri
   const f = THEMES.formats[format];
   const fixed = overrides.width != null;
   for (const k of Object.keys(overrides)) if (overrides[k] == null) delete overrides[k];
-  const theme = { ...base, ...s, colors: { ...base.colors, ...s.colors }, ...f, legend, ...overrides, style, format };
+  const theme = { ...base, ...s, colors: { ...base.colors, ...s.colors }, ...f, legend: legend ?? f.legend ?? "right", ...overrides, style, format };
   theme.reflow = f.reflow && !fixed;
   // weight: the style's line and point scale (pastel colors need slightly thicker lines).
   theme.line = f.line * (s.weight ?? base.weight ?? 1);
@@ -28,6 +28,7 @@ export function resolveTheme({ style = "pastel", format = "screen", legend = "ri
   theme.fixedHeight = overrides.height != null;
   theme.fitHeight = f.reflow && !theme.fixedHeight; // a screen plot: its height may follow the panel aspect
   theme.fixedFormat = !f.reflow; // report, slide: a picture of a fixed size, often copied without its toolbar
+  theme.pad = f.pad ?? 0.9; // the outer margin, in em of the base text size
   theme.palette = palette(theme, theme.palette);
   return theme;
 }

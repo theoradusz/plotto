@@ -124,7 +124,7 @@ test("aspect 1 gives square panels; a screen plot changes its height for them", 
   const f = figure(p.spec(), { document, width: 900 });
   assert.notEqual(f.H, 500);
   assert.ok(sq(base.point().theme("pastel", { format: "slide", aspect: 1 })), "a fixed size keeps its height and narrows the panels");
-  assert.equal(figure(base.point().theme("pastel", { format: "slide", aspect: 1 }).spec(), { document }).H, 600);
+  assert.equal(figure(base.point().theme("pastel", { format: "slide", aspect: 1 }).spec(), { document }).H, 403);
   assert.throws(() => base.theme("pastel", { aspect: 0 }), /aspect must be a positive number/);
 });
 
@@ -251,7 +251,7 @@ test("copy for a slide draws the current view at the slide size", () => {
   const state = figure(spec, { document });
   const zoomed = state.home.map((d) => ({ ...d, x: [2, 8] }));
   const slide = slideFigure(spec, { ...state, domains: zoomed, hidden: new Set(["b"]) });
-  assert.equal(`${slide.W}x${slide.H}`, "960x600");
+  assert.equal(`${slide.W}x${slide.H}`, "691x403");
   assert.equal(slide.theme.style, "wota");
   assert.deepEqual(slide.domains[0].x, [2, 8]);
   assert.ok(slide.hidden.has("b"));
@@ -265,18 +265,19 @@ test("a tick at the top edge moves the panels down, off the subtitle", () => {
   assert.ok(edge.panels[0].y > edge.area.y);
 });
 
-test("a slide makes long legend and info text smaller until it fits; a screen plot keeps the size", () => {
+test("a slide fits a long legend and info table without cuts; a screen plot keeps the size", () => {
   const names = ["bk04, not compensated", "bk04, air-shape model", "bk04, air-shape and tap residual model", "bk02, steady runs (no fouling)"];
   const long = names.flatMap((g, k) => Array.from({ length: 10 }, (_, i) => ({ t: i, v: i * k, g })));
   const p = plot(long, { x: "t", y: "v", color: "g" }).line().info({ site: "Hayama", "chlorine dose": "2.5 mg/L", "contact time": "30 min" });
   const slide = figure(p.theme("pastel", { format: "slide" }).spec(), { document });
-  assert.ok(slide.fonts.legend < 21, `slide legend text: ${slide.fonts.legend}`);
-  assert.ok(slide.fonts.legend >= 21 * 0.7);
+  // It fits by smaller text or by the footer band: nothing is cut, and the text stays at 80% at least.
+  assert.ok(slide.fonts.legend >= 12 * 0.8, `slide legend text: ${slide.fonts.legend}`);
+  assert.ok(slide.legend.items.every((it) => !it.lines.at(-1).endsWith("…")));
   assert.equal(slide.info.cut, 0);
   const screen = figure(p.spec(), { document, width: 900 });
   assert.equal(screen.fonts.legend, 11);
   const short = figure(base.line().theme("pastel", { format: "slide" }).spec(), { document });
-  assert.equal(short.fonts.legend, 21, "a short legend keeps the slide size");
+  assert.equal(short.fonts.legend, 12, "a short legend keeps the slide size");
 });
 
 test("a fixed size puts the legend where the panels get the most room, unless the spec sets it", () => {
@@ -286,7 +287,7 @@ test("a fixed size puts the legend where the panels get the most room, unless th
   const right = figure(p.theme("pastel", { format: "slide", legend: "right" }).spec(), { document });
   const bottom = figure(p.theme("pastel", { format: "slide", legend: "bottom" }).spec(), { document });
   assert.equal(right.legend.horizontal, false, "a set place stays");
-  assert.equal(area(auto), Math.max(area(right), area(bottom)));
+  assert.ok(area(auto) >= 0.9 * Math.max(area(right), area(bottom)), "within 10% of the most room");
   assert.equal(figure(p.spec(), { document, width: 900 }).legend.horizontal, false, "a screen plot keeps the legend on the right");
 });
 
@@ -299,6 +300,19 @@ test("a slide makes long strip text smaller before it cuts it", () => {
   assert.equal(new Set(sizes).size, 1, "all strips have the same size");
   const screen = figure(plot(rows3, { x: "t", y: "v" }).line().facet("k", { ncol: 3 }).spec(), { document, width: 900 });
   assert.equal(screen.layout.strips[0].size, screen.fonts.strip);
+});
+
+test("a slide keeps one panel at most 0.55 times as tall as it is wide; facets and screen plots are not limited", () => {
+  const shape = (f) => f.layout.panels[0].innerH / f.layout.panels[0].innerW;
+  const one = figure(base.line().theme("pastel", { format: "slide" }).spec(), { document });
+  assert.ok(shape(one) <= 0.55 + 1e-9, `one panel: ${shape(one)}`);
+  assert.equal(one.H, 403, "the picture keeps its size");
+  const tall = figure(base.line().theme("pastel", { format: "slide", legend: "right" }).spec(), { document });
+  assert.ok(Math.abs(shape(tall) - 0.55) < 1e-9, "a panel that would be taller gets the limit");
+  const facets = figure(plot(rows, { x: "t", y: "v" }).line().facet("k", { ncol: 1 }).theme("pastel", { format: "slide" }).spec(), { document });
+  assert.ok(facets.layout.panels.every((b) => b.innerH < b.innerW * 0.55), "stacked facets are flat anyway");
+  const screen = figure(base.line().spec(), { document, width: 600 });
+  assert.ok(shape(screen) > 0.55, "a screen plot is not limited");
 });
 
 test("a method returns a new builder and keeps the old one", () => {

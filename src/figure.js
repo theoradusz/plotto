@@ -17,7 +17,7 @@ const NARROW = 560; // px: below this width, a right legend moves to the bottom
 const MIN_HEIGHT = 240; // px: the smallest height of a reflowed figure
 const ASPECT_GROWTH = 1.2; // a theme aspect makes a reflowed figure at most this much taller
 const SHRINK_STEP = 0.05; // a format with "shrink" tries the legend and info text smaller by this share at each step
-const ROOM_TOLERANCE = 0.1; // it keeps the largest text whose panel area is at most this share below the best layout
+const ROOM_TOLERANCE = 0.2; // it keeps the largest text whose panel area is at most this share below the best layout
 
 // options: document (the browser or jsdom), width (lay out at this width), domains and hidden (keep a view after a resize).
 export function figure(spec, { document: doc = globalThis.document, width, domains, hidden = new Set() } = {}) {
@@ -56,7 +56,7 @@ export function figure(spec, { document: doc = globalThis.document, width, domai
   // usual places, then the largest area.
   const choose = (H) => {
     const fixed = !theme.fitHeight;
-    const legends = fixed && !theme.legendSet && theme.legend === "right" ? ["right", "bottom"] : [theme.legend];
+    const legends = fixed && !theme.legendSet && theme.legend !== "none" ? ["right", "bottom"] : [theme.legend];
     const infos = fixed && ns.info && !ns.info.set ? ["right", "bottom"] : [ns.info?.position];
     const scales = [];
     for (let k = 1; k >= (theme.shrink ?? 1) - 1e-9; k -= SHRINK_STEP) scales.push(k);

@@ -6,6 +6,18 @@ Write each change under "Unreleased". `scripts/release.sh` moves them to the new
 
 ## Unreleased
 
+### Changed
+
+- The slide picture is 7.2 in wide. It was 6.72 in.
+- The slide picture uses 13 px text, the scale of a normal copy. The plot gets more room.
+- The slide picture has a smaller outer margin.
+- The `slide` format is 691 × 403 px, the size on the slide. It was 960 × 600 px.
+- A bottom legend shows its title on the same row as the items.
+- A short panel shows at least 3 ticks on its y axis.
+- In the `slide` format, a single plot is at most 0.55 times as tall as it is wide. Facets are not limited.
+- In the `slide` format, the legend goes at the bottom and the info table on the right, when this does not make the plot more than 20% smaller.
+- In a fixed size, the legend and the info table move from their usual place only when this gives the plot more than 20% more room. It was 10%.
+
 ## 0.5.0 – 2026-10-25
 
 ### Changed

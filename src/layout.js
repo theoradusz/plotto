@@ -15,7 +15,7 @@ export function place({ ns, grid, kind, home, legend, info, fonts, W, H }) {
   const metrics = theme.metrics;
   const tw = (t, size, bold) => textWidth(t, size, bold, metrics);
   const s = fonts.base;
-  const pad = Math.round(s * 0.9);
+  const pad = Math.round(s * theme.pad);
   const gap = Math.round(s * 0.8);
   const { title, subtitle, caption, x: xTitle, y: yTitle } = ns.labels;
   const at = (position) => (info?.position === position ? info : null);
@@ -54,7 +54,7 @@ export function place({ ns, grid, kind, home, legend, info, fonts, W, H }) {
   let innerH = area.h / grid.nrow;
   let ml, mb, mt, count, rotateX, wrapX;
   for (let pass = 0; pass < 2; pass++) {
-    count = { x: Math.max(2, innerW / (kind.x === "time" ? 110 : 75)), y: Math.max(2, innerH / 45) };
+    count = { x: Math.max(2, innerW / (kind.x === "time" ? 110 : 75)), y: Math.max(3, innerH / 45) }; // at least 3 y ticks, so that a short panel keeps a readable scale
     ml = Array(grid.ncol).fill(0);
     mb = Array(grid.nrow).fill(0);
     rotateX = false;
@@ -122,6 +122,8 @@ export function place({ ns, grid, kind, home, legend, info, fonts, W, H }) {
   if (theme.aspect) {
     if (innerH > innerW * theme.aspect) innerH = innerW * theme.aspect;
     else innerW = innerH / theme.aspect;
+  } else if (theme.flat && grid.panels.length === 1) {
+    innerH = Math.min(innerH, innerW * theme.flat); // flat (slide): one panel is at most this tall, as a share of its width
   }
   // The space the aspect leaves free goes half on each side, so the panels stay centered.
   const slackY = ((room.h - innerH) * grid.nrow) / 2;

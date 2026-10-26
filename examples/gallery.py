@@ -286,7 +286,7 @@ def log_axes():
 
 
 def styles():
-    """The same plot in each style, and the slide format (960 × 600 px, large text) with the wota style."""
+    """The same plot in each style, and the slide format (691 × 403 px, the size on a slide) with the wota style."""
     base = lines().labels(subtitle=None, caption=None)
     out = [base.theme(name).labels(title=f'theme("{name}")') for name in ("pastel", "wota", "paper", "dark")]
     out.append(facets().theme("wota", format="slide").labels(title='theme("wota", format="slide")'))
