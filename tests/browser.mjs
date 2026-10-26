@@ -175,7 +175,7 @@ try {
     const html = await (await item.getType("text/html")).text();
     return bitmap.width + "x" + bitmap.height + " " + html.match(/width="\\d+" height="\\d+"/)?.[0];
   })()`);
-  check("copy for a slide writes a 3× PNG and an <img> of 645 × 403 (6.72 × 4.2 in in Google Slides)", slidePNG === '1935x1209 width="645" height="403"', slidePNG);
+  check("copy for a slide writes a 2.8× PNG and an <img> at the slide size (691 px = 7.2 in in Google Slides)", /^1935x1128 width="691" height="403"$/.test(slidePNG), slidePNG);
   const panel2 = JSON.parse(await b.evaluate("JSON.stringify(ctl[2].state.layout.panels[0])"));
   await drag(2, [panel2.x + panel2.ml + 50, panel2.y + 30], [panel2.x + panel2.ml + 250, panel2.y + 200]);
   check("a drag on a static plot does not zoom", await b.evaluate("ctl[2].state.domains === ctl[2].state.home"));

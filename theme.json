@@ -139,12 +139,15 @@
       "reflow": false
     },
     "slide": {
-      "width": 960,
-      "height": 600,
-      "size": 22,
-      "shrink": 0.7,
-      "line": 2.5,
-      "point": 4,
+      "width": 691,
+      "height": 403,
+      "size": 13,
+      "shrink": 0.8,
+      "line": 1.6,
+      "point": 2.7,
+      "pad": 0.3,
+      "flat": 0.55,
+      "legend": "bottom",
       "reflow": false
     }
   }

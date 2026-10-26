@@ -185,7 +185,7 @@ A style can also list theme color names as its palette: the `paper` and `dark` s
 |---|---|---|---|
 | `screen` (default) | 900 × 500 | 12 | Follows the element or cell width (reflow) |
 | `report` | 640 × 400 | 10 | Fixed |
-| `slide` | 960 × 600 | 22 | Fixed. Sized for the body of a 16:9 slide, below its title, with room for comments on the right. A long legend or info table gets smaller text (see below). |
+| `slide` | 691 × 403 | 13 | Fixed, in slide pixels (96 per inch): 7.2 × 4.2 in for the body of a 16:9 slide, between its title and its footer, with room for comments on the right. The outer margin is 0.3 em. A plot with one panel is at most 0.55 times as tall as it is wide (`flat`); the height that is left goes half above and half below it. |
 
 - A style in `theme.json` lists only what differs from `pastel`. `weight` scales the line width (and the point radius by its square root).
 - `width` fixes the size. The height then follows the aspect ratio of the format, unless `height` is set too.
@@ -196,8 +196,9 @@ A style can also list theme color names as its palette: the `paper` and `dark` s
   1. It tries each on the right and at the bottom. A place that the spec sets (`theme(legend=)`, `info(position=)`) stays.
   2. A format with `shrink` in `theme.json` (`slide`: 0.7) also tries their text smaller, in steps of 5%, down to that share of its size.
   3. It keeps the layouts that cut the least: legend labels and info keys with an ellipsis, a second legend column, "+N more" info rows.
-  4. Of these, it keeps the layouts whose panel area is at most 10% below the largest one. It takes the largest text, then the places of the theme, then the largest area.
+  4. Of these, it keeps the layouts whose panel area is at most 20% below the largest one. It takes the largest text, then the usual places, then the largest area. The usual places are the legend of the theme (default: `right`; the `slide` format: `bottom`) and the info table on the right.
 - A `screen` plot keeps the places and the text size.
+- A bottom legend has its title on its first row, before the items.
 - A format with `shrink` makes the facet strip text smaller (the same size for all strips) before it cuts a label, down to that share of its size.
 - `aspect` is the shape of each panel, height / width: `1` gives square panels (for observed-against-predicted plots, with the same `limits` on x and y). The panels shrink in one direction to get that shape. A `screen` plot without `height` changes its height instead (at most 1.2 times its usual height), so the panels fill it. The space that is left goes half on each side of the panels.
 - The title and the subtitle align left with the panels and wrap to two lines at most. A `screen` plot keeps room on the right for the toolbar; a fixed size uses the full width. The caption is at the bottom left.
@@ -228,7 +229,7 @@ A style can also list theme color names as its palette: the `paper` and `dark` s
 | Width | A `screen` plot lays out at the element width, and again 100 ms after a width change (minimum 320 px). A fixed size scales down to fit. |
 | Toolbar | A flat, square bar of icon buttons at the top right. It shows when the pointer is on the plot, and always on touch screens. The button size is 1/34 of the figure width, from 22 to 30 px. The active mode has the accent color. |
 | Static buttons | Copy as PNG; Copy for a slide; Download (PNG or SVG) |
-| Copy for a slide | Draws the current view (zoom, hidden series) again in the `slide` format, with the plot's style. The clipboard gets a PNG of 1935 × 1209 px and an HTML `<img>` of 645 × 403 px. Google Slides pastes the HTML at 96 px per inch: 6.72 × 4.2 in, 75% of the slide height, at 3× sharpness (288 px per inch). |
+| Copy for a slide | Draws the current view (zoom, hidden series) again in the `slide` format, with the plot's style. The clipboard gets a PNG with 2.8 times the pixels (1935 px wide) and an HTML `<img>` at the figure size (691 × 403 px). Google Slides pastes the HTML at 96 px per inch: 7.2 in wide. |
 | Interactive buttons | Also zoom box and pan (the active mode is highlighted), zoom in, zoom out, reset |
 
 With `interactive: true`:

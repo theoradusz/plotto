@@ -26,7 +26,7 @@ p.interactive()                     # the same plot with zoom, pan, hover and le
 p.theme("wota")                     # another style
 p.color(palette="aizome")           # another palette
 p.save("fig.png")                   # PNG; .svg for vector files
-p.theme("wota", format="slide").save("slide.png")   # 960 × 600 px, large text
+p.theme("wota", format="slide").save("slide.png")   # 691 × 403 px: 7.2 × 4.2 in on a slide
 ```
 
 ```js
@@ -111,7 +111,7 @@ The table is a card on the right of the plot, or below it. A plot narrower than 
 - A legend click hides or shows a series. Two quick clicks on the same entry (within 300 ms) show only that series.
 - The toolbar shows at the top right when the pointer is on the plot:
   - copy as PNG;
-  - copy for a slide: the current view in the slide format, which pastes into Google Slides at 6.72 × 4.2 in (75% of the slide height), sharp;
+  - copy for a slide: the current view in the slide format, which pastes into Google Slides at 7.2 × 4.2 in, sharp;
   - download as PNG or SVG;
   - in interactive mode, also zoom box, pan, zoom in, zoom out and reset.
 - The output loads d3 and Observable Plot from `cdn.jsdelivr.net`. GitHub, nbviewer, or a page without network access shows the static SVG in the output.
@@ -126,9 +126,9 @@ The table is a card on the right of the plot, or below it. A plot narrower than 
 
 | Target | Use |
 |---|---|
-| Google Slides | The "Copy for a slide" button, then paste under the slide title: 6.72 × 4.2 in, with room for comments on the right. Or a PNG: `p.save("fig.png")`. Google Slides does not accept SVG. |
+| Google Slides | The "Copy for a slide" button, then paste under the slide title: 7.2 × 4.2 in, with room for comments on the right. Or a PNG: `p.save("fig.png")`. Google Slides does not accept SVG. |
 | PowerPoint, Keynote, documents | SVG: `p.save("fig.svg")`. The SVG uses the installed fonts. |
-| A slide layout | `p.theme(style, format="slide")`: 960 × 600 px with large text |
+| A slide layout | `p.theme(style, format="slide")`: 691 × 403 px, the size on the slide |
 | A report column | `p.theme(style, format="report")`: 640 × 400 px |
 | Square panels | `p.theme(aspect=1)`, for observed-against-predicted plots. Give x and y the same `limits`. |
 | A given size | `p.save("fig.png", width=1600)` lays the plot out again at 1600 px. |
