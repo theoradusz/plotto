@@ -17,7 +17,8 @@ const NARROW = 560; // px: below this width, a right legend moves to the bottom
 const MIN_HEIGHT = 240; // px: the smallest height of a reflowed figure
 const ASPECT_GROWTH = 1.2; // a theme aspect makes a reflowed figure at most this much taller
 const SHRINK_STEP = 0.05; // a format with "shrink" tries the legend and info text smaller by this share at each step
-const ROOM_TOLERANCE = 0.2; // it keeps the largest text whose panel area is at most this share below the best layout
+const ROOM_TOLERANCE = 0.2;
+const MIN_SHAPE = 0.3; // a panel flatter than this (height / width) gets nothing from more width: it does not count // it keeps the largest text whose panel area is at most this share below the best layout
 
 // options: document (the browser or jsdom), width (lay out at this width), domains and hidden (keep a view after a resize).
 export function figure(spec, { document: doc = globalThis.document, width, domains, hidden = new Set() } = {}) {
@@ -47,7 +48,7 @@ export function figure(spec, { document: doc = globalThis.document, width, domai
     const cut = items.filter((it) => it.lines.at(-1).endsWith("…")).length + (items.some((it) => !legend.horizontal && it.x > 0) ? 1 : 0) + (info?.cut ?? 0);
     const p = layout.panels[0];
     const usual = where.legend === theme.legend && where.info === ns.info?.position; // the places of the theme and spec
-    return { fonts: f, info, legend, layout, k, cut, usual, area: p.innerW * p.innerH };
+    return { fonts: f, info, legend, layout, k, cut, usual, area: Math.min(p.innerW, p.innerH / MIN_SHAPE) * p.innerH };
   };
   // The layout to draw. A screen plot keeps the places of the theme and the text size. A fixed size (slide, report,
   // a set height) also tries the legend and the info card on the right and at the bottom, unless the spec sets

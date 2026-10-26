@@ -13,9 +13,8 @@ const MIN_WIDTH = 320; // px
 const ZOOM_STEP = 0.75; // zoom in keeps 75% of the range
 const DOUBLE = 300; // ms: two legend clicks within this time are a double-click
 // "Copy for a slide" pastes the slide format at its own size: Google Slides gives a pasted image 96 px per inch, so
-// 691 px is 7.2 in. The PNG has 2.8 times the pixels: 1935 px wide, under the ~2000 px above which Slides may
-// compress images.
-const SLIDE_SCALE = 2.8;
+// 691 px is 7.2 in. The PNG has 4 times the pixels (2764 px wide, about 380 px per inch), which stays sharp in Slides.
+const SLIDE_SCALE = 4;
 
 // The current view (zoom and hidden series) drawn again in the slide format, for "Copy for a slide".
 export function slideFigure(spec, state) {

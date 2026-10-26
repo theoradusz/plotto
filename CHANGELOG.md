@@ -6,6 +6,12 @@ Write each change under "Unreleased". `scripts/release.sh` moves them to the new
 
 ## Unreleased
 
+### Changed
+
+- In a fixed size, a very flat panel does not get more width from the layout. Thus stacked panels in the `slide` format keep the legend on the right and get more height.
+- In the `slide` format, a long title or subtitle gets smaller text to stay on one line, to 80% of its size at most.
+- "Copy for a slide" makes a sharper image: 4 times the pixels. It was 2.8 times. The size on the slide does not change.
+
 ## 0.5.1 – 2026-10-26
 
 ### Changed

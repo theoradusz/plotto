@@ -315,6 +315,28 @@ test("a slide keeps one panel at most 0.55 times as tall as it is wide; facets a
   assert.ok(shape(screen) > 0.55, "a screen plot is not limited");
 });
 
+test("a slide puts the long legend of stacked panels on the right; a single panel keeps it at the bottom", () => {
+  const names = ["bk04, not compensated", "bk04, air-shape model", "bk04, air-shape and tap residual model", "bk02, steady runs (no fouling)"];
+  const long = names.flatMap((g, i) => ["uv", "vis"].flatMap((band) => Array.from({ length: 10 }, (_, t) => ({ t, v: t * i, g, band }))));
+  const slide = { format: "slide" };
+  const stacked = figure(plot(long, { x: "t", y: "v", color: "g" }).line().facet("band", { ncol: 1 }).labels({ title: "T", subtitle: "S" }).theme("pastel", slide).spec(), { document });
+  assert.equal(stacked.legend.horizontal, false, "stacked panels: right");
+  const single = figure(plot(long.filter((r) => r.band === "uv"), { x: "t", y: "v", color: "g" }).line().labels({ title: "T" }).theme("pastel", slide).spec(), { document });
+  assert.equal(single.legend.horizontal, true, "one panel: bottom");
+});
+
+test("a long slide title gets smaller text to stay on one line; a screen title keeps its size", () => {
+  const title = "Water absorbance per cm of bk04, compensated: high load against the other hours";
+  const sizes = (f) => f.layout.texts.filter((t) => t.attrs["font-weight"] === "bold").map((t) => t.attrs["font-size"]); // one per title line
+  const slide = figure(base.line().labels({ title }).theme("pastel", { format: "slide" }).spec(), { document });
+  assert.equal(sizes(slide).length, 1);
+  assert.ok(sizes(slide)[0] < slide.fonts.title && sizes(slide)[0] >= slide.fonts.title * 0.8, `title ${sizes(slide)[0]}`);
+  const screen = figure(base.line().labels({ title }).spec(), { document, width: 500 });
+  assert.equal(sizes(screen)[0], screen.fonts.title);
+  const longer = figure(base.line().labels({ title: `${title}, ${title}` }).theme("pastel", { format: "slide" }).spec(), { document });
+  assert.ok(sizes(longer).length > 1 && sizes(longer)[0] === longer.fonts.title, "a title that wraps keeps its size");
+});
+
 test("a method returns a new builder and keeps the old one", () => {
   const lines = base.line();
   assert.equal(base.spec().layers.length, 0);

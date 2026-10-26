@@ -196,12 +196,12 @@ A style can also list theme color names as its palette: the `paper` and `dark` s
   1. It tries each on the right and at the bottom. A place that the spec sets (`theme(legend=)`, `info(position=)`) stays.
   2. A format with `shrink` in `theme.json` (`slide`: 0.7) also tries their text smaller, in steps of 5%, down to that share of its size.
   3. It keeps the layouts that cut the least: legend labels and info keys with an ellipsis, a second legend column, "+N more" info rows.
-  4. Of these, it keeps the layouts whose panel area is at most 20% below the largest one. It takes the largest text, then the usual places, then the largest area. The usual places are the legend of the theme (default: `right`; the `slide` format: `bottom`) and the info table on the right.
+  4. Of these, it keeps the layouts whose useful panel area is at most 20% below the largest one. The useful area counts the width of a panel only up to its height / 0.3: a flatter panel gets nothing from more width. It takes the largest text, then the usual places, then the largest area. The usual places are the legend of the theme (default: `right`; the `slide` format: `bottom`) and the info table on the right.
 - A `screen` plot keeps the places and the text size.
 - A bottom legend has its title on its first row, before the items.
 - A format with `shrink` makes the facet strip text smaller (the same size for all strips) before it cuts a label, down to that share of its size.
 - `aspect` is the shape of each panel, height / width: `1` gives square panels (for observed-against-predicted plots, with the same `limits` on x and y). The panels shrink in one direction to get that shape. A `screen` plot without `height` changes its height instead (at most 1.2 times its usual height), so the panels fill it. The space that is left goes half on each side of the panels.
-- The title and the subtitle align left with the panels and wrap to two lines at most. A `screen` plot keeps room on the right for the toolbar; a fixed size uses the full width. The caption is at the bottom left.
+- The title and the subtitle align left with the panels and wrap to two lines at most. A format with `shrink` first makes a long title or subtitle smaller, down to that share of its size, so that it stays on one line; one that does not fit even then keeps its size and wraps. A `screen` plot keeps room on the right for the toolbar; a fixed size uses the full width. The caption is at the bottom left.
 - A bottom info table puts its entries in up to 3 columns, as many as fit on one line each; else one column whose values wrap.
 - `src/metrics.js` holds the glyph widths of each style font for the layout. CJK characters are one em wide.
 
@@ -229,7 +229,7 @@ A style can also list theme color names as its palette: the `paper` and `dark` s
 | Width | A `screen` plot lays out at the element width, and again 100 ms after a width change (minimum 320 px). A fixed size scales down to fit. |
 | Toolbar | A flat, square bar of icon buttons at the top right. It shows when the pointer is on the plot, and always on touch screens. The button size is 1/34 of the figure width, from 22 to 30 px. The active mode has the accent color. |
 | Static buttons | Copy as PNG; Copy for a slide; Download (PNG or SVG) |
-| Copy for a slide | Draws the current view (zoom, hidden series) again in the `slide` format, with the plot's style. The clipboard gets a PNG with 2.8 times the pixels (1935 px wide) and an HTML `<img>` at the figure size (691 × 403 px). Google Slides pastes the HTML at 96 px per inch: 7.2 in wide. |
+| Copy for a slide | Draws the current view (zoom, hidden series) again in the `slide` format, with the plot's style. The clipboard gets a PNG with 4 times the pixels (2764 px wide) and an HTML `<img>` at the figure size (691 × 403 px). Google Slides pastes the HTML at 96 px per inch: 7.2 in wide. |
 | Interactive buttons | Also zoom box and pan (the active mode is highlighted), zoom in, zoom out, reset |
 
 With `interactive: true`:
