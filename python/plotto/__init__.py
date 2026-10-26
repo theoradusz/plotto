@@ -3,7 +3,7 @@
 https://github.com/theoradusz/plotto
 """
 
-__version__ = "0.5.1"
+__version__ = "0.5.2"
 
 from .plot import Plot, plot  # noqa: E402
 
