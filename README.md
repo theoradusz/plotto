@@ -116,6 +116,7 @@ The table is a card on the right of the plot, or below it. A plot narrower than 
   - in interactive mode, also zoom box, pan, zoom in, zoom out and reset.
 - The output loads d3 and Observable Plot from `cdn.jsdelivr.net`. GitHub, nbviewer, or a page without network access shows the static SVG in the output.
 - Each output holds the data of the plot and the plotto script (about 60 kB). A plot with 20 000 points adds about 2 MB to the notebook.
+- In marimo, install `pip install "python-plotto[marimo]"` (anywidget). Then `p` and `p.interactive()` show as a live widget, with the same toolbar and interaction. A widget needs no Node, so the cell runs faster. Without anywidget, marimo shows the static SVG.
 
 ### Web pages and React
 
@@ -157,8 +158,8 @@ To publish the gallery:
 | Command | What it verifies |
 |---|---|
 | `npm test` | Each layer and style (SVG snapshots in `tests/snapshots/`), stacks, bins, smooth fits, domains, facets, legends, reflow, errors |
-| `npm run browser-test` | In headless Chrome: the browser SVG equals the Node SVG. Zoom, Home, the toolbar, hover, legend clicks and their timing, reflow and the static mode work. |
-| `pytest python/tests` | The Python and JS builders make the same spec; data conversion; SVG and PNG files; notebook output |
+| `npm run browser-test` | In headless Chrome: the browser SVG equals the Node SVG. Zoom, Home, the toolbar, hover, legend clicks and their timing, reflow and the static mode work. The marimo widget draws in a shadow root, with its styles and legend clicks. |
+| `pytest python/tests` | The Python and JS builders make the same spec; data conversion; SVG and PNG files; notebook output; the marimo widget; the files in the wheel. Run `npm run build:python` first. |
 | `ruff check . && black --check .` | Python lint |
 
 If a change of the look is intentional, run `UPDATE_SNAPSHOTS=1 npm test` and review the SVG diff.

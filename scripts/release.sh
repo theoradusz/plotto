@@ -40,6 +40,7 @@ prepare() {
   step "Tests"
   npm test
   npm run browser-test
+  npm run build:python # the marimo widget and wheel tests need python/plotto/_assets/
   "$python" -m pytest -q python/tests
   "$python" -m ruff check .
   "$python" -m black --check --quiet .

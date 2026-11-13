@@ -18,3 +18,5 @@ p.save("fig.png")  # needs Node.js 20 or later
 - Gallery, grammar tutorial and reference: https://theoradusz.github.io/plotto/
 - Source and full documentation: https://github.com/theoradusz/plotto
 - The JavaScript package for web pages and React: `npm install plotto`
+- marimo: `pip install "python-plotto[marimo]"` draws `p` as a live widget.
+- The installed package holds the full `README.md` and `SPEC.md` of its version in `plotto/_assets/`.

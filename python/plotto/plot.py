@@ -265,6 +265,17 @@ class Plot:
     def _repr_mimebundle_(self, include=None, exclude=None):
         return {"text/html": output.html(self.spec(), self._interactive), "text/plain": repr(self)}
 
+    def _display_(self):
+        """marimo output (Jupyter ignores it): a live widget with anywidget installed, with no Node call.
+        Without anywidget, the notebook HTML, of which marimo shows the static SVG."""
+        try:
+            from .widget import PlotWidget
+        except ImportError:
+            import marimo as mo
+
+            return mo.Html(output.html(self.spec(), self._interactive))
+        return PlotWidget(spec=self.spec(), interactive=self._interactive)
+
 
 def _constant(key, value, where, columns):
     kind = GRAMMAR["options"].get(key)

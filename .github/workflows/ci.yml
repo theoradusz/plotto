@@ -23,6 +23,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: CHROME=$(which google-chrome) npm run browser-test
+      - run: npm run build:python
       - run: pip install -e "python[test]"
       - run: pytest python/tests
       - run: ruff check . && black --check .

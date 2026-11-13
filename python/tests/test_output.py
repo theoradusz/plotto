@@ -44,3 +44,30 @@ def test_python_and_npm_versions_agree():
 
     package = json.loads((Path(__file__).resolve().parents[2] / "package.json").read_text())
     assert plotto.__version__ == package["version"]
+
+
+def test_marimo_display_is_a_widget_with_the_spec():
+    from plotto.widget import PlotWidget
+
+    for p, interactive in ((P, False), (P.interactive(), True)):
+        widget = p._display_()
+        assert isinstance(widget, PlotWidget)
+        assert widget.spec == p.spec()
+        assert widget.interactive is interactive
+
+
+def test_the_wheel_ships_the_widget_and_the_docs(tmp_path):
+    import shutil
+    import subprocess
+    import sys
+    import zipfile
+    from pathlib import Path
+
+    # Build from a copy, so the build leaves nothing in the checkout.
+    source = Path(__file__).resolve().parents[1]
+    copy = shutil.copytree(source, tmp_path / "python", ignore=shutil.ignore_patterns("__pycache__", "*.egg-info", "build", "tests"))
+    subprocess.run([sys.executable, "-m", "pip", "wheel", "--no-deps", "-q", "-w", tmp_path / "dist", copy], check=True)
+    (wheel,) = (tmp_path / "dist").glob("*.whl")
+    names = zipfile.ZipFile(wheel).namelist()
+    for name in ("widget.js", "plotto.js", "README.md", "SPEC.md"):
+        assert f"plotto/_assets/{name}" in names, f"{name} is not in the wheel: run npm run build:python"

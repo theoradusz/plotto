@@ -1,5 +1,5 @@
 // Browser test in headless Chrome: the browser draws the same SVG as Node, and the toolbar, zoom, Home, hover,
-// legend and reflow work. Run: npm run browser-test (needs Google Chrome; set CHROME to its path on Linux).
+// legend and reflow work, also in the marimo widget (in a shadow root). Run: npm run browser-test (needs Google Chrome; set CHROME to its path on Linux).
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -28,13 +28,20 @@ const modes = [true, true, false]; // plot 2 is static
 
 const dir = mkdtempSync(join(tmpdir(), "plotto-test-"));
 const js = (await bundle({ cdn: false })).replace(/<\/script/gi, "<\\/script");
+// The marimo widget module, loaded as anywidget loads it (a Blob URL) and drawn in a shadow root, as marimo does.
+const widgetJs = JSON.stringify(await bundle({ cdn: false, entry: "widget.js" })).replace(/<\//g, "<\\/");
 const page = `<!doctype html><meta charset="utf-8"><body style="margin:0">
 ${specs.map((_, i) => `<div id="p${i}" style="width:900px"></div>`).join("")}
+<div id="w" style="width:900px"></div>
 <script type="application/json" id="specs">${JSON.stringify(specs).replace(/<\//g, "<\\/")}</script>
 <script type="module">${js}
 const specs = JSON.parse(document.getElementById("specs").textContent);
 const modes = ${JSON.stringify(modes)};
 window.ctl = specs.map((s, i) => plotto.draw(s, document.getElementById("p" + i), { interactive: modes[i] }));
+const widget = (await import(URL.createObjectURL(new Blob([${widgetJs}], { type: "text/javascript" })))).default;
+window.shadow = document.getElementById("w").attachShadow({ mode: "open" });
+const model = { get: (name) => ({ spec: specs[0], interactive: true })[name] };
+window.cleanup = widget.render({ model, el: shadow.appendChild(document.createElement("div")) });
 window.ready = true;</script>`;
 writeFileSync(join(dir, "test.html"), page);
 
@@ -191,6 +198,17 @@ try {
 
   const ms = await b.evaluate("(() => { const c = ctl[1]; const t = performance.now(); for (let k = 0; k < 10; k++) c.redraw(); return (performance.now() - t) / 10; })()");
   check("a spectra plot (24 × 143 points) draws again in less than 50 ms", ms < 50, `${ms.toFixed(1)} ms`);
+  // The marimo widget: render() draws into an element in a shadow root, with the styles and the legend clicks.
+  check("the widget render() draws a .pt-root in the shadow root", await b.evaluate("!!shadow.querySelector('.pt-root svg')"));
+  check("the styles reach the shadow root", await b.evaluate("getComputedStyle(shadow.querySelector('.pt-root')).position === 'relative'"));
+  await b.evaluate("document.getElementById('w').scrollIntoView()");
+  const lines = () => b.evaluate("shadow.querySelectorAll('.pt-panel [aria-label=line] path').length");
+  const shown = await lines();
+  await sleep(400); // not a double-click of the legend clicks above
+  await click(await b.evaluate("(() => { const r = shadow.querySelector('.pt-key').getBoundingClientRect(); return JSON.stringify([r.left + r.width / 2, r.top + r.height / 2]); })()").then(JSON.parse));
+  check("a legend click in the shadow root hides a series", (await lines()) < shown, `${shown} → ${await lines()}`);
+  check("render() returns the cleanup", await b.evaluate("typeof cleanup === 'function' && (cleanup(), true)"));
+
   check("no page errors", b.errors.length === 0, b.errors.join("; "));
 } finally {
   b.close();

@@ -27,9 +27,10 @@ export function renderPNG(spec, scale = 2) {
 // The browser bundle: src/ as one ES module that sets window.plotto.
 // cdn = true loads d3 and Plot from the CDN (notebook outputs); cdn = false puts them in the bundle (offline pages, tests).
 // format "iife" gives a classic script, which also loads from a file:// page.
+// entry "widget.js" gives the anywidget module of the marimo output instead.
 const bundleCache = {};
-export async function bundle({ cdn = true, format = "esm" } = {}) {
-  const key = `${cdn}-${format}`;
+export async function bundle({ cdn = true, format = "esm", entry = "browser.js" } = {}) {
+  const key = `${entry}-${cdn}-${format}`;
   if (bundleCache[key]) return bundleCache[key];
   const esbuild = await import("esbuild");
   const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url)));
@@ -44,7 +45,7 @@ export async function bundle({ cdn = true, format = "esm" } = {}) {
     },
   };
   const result = await esbuild.build({
-    entryPoints: [fileURLToPath(new URL("./browser.js", import.meta.url))],
+    entryPoints: [fileURLToPath(new URL(`./${entry}`, import.meta.url))],
     bundle: true,
     write: false,
     format: cdn ? "esm" : format,

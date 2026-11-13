@@ -32,7 +32,8 @@ function copySlide(spec, state) {
 // Returns a controller: { state (the current figure), redraw(), destroy() }.
 export function draw(spec, el, { interactive = false, width } = {}) {
   const doc = el.ownerDocument;
-  installStyles(doc);
+  const scope = el.getRootNode();
+  installStyles(scope.nodeType === 11 ? scope : doc); // 11: a shadow root
   const root = doc.createElement("div");
   root.className = "pt-root";
   const tip = Object.assign(doc.createElement("div"), { className: "pt-tip" });
@@ -205,8 +206,9 @@ function attach(ctl, root, tip) {
     tip.classList.remove("pt-pinned");
   }
 
-  // Pointer capture retargets click events to the root, so find the element under the pointer.
-  const under = (e) => ctl.state.doc.elementFromPoint(e.clientX, e.clientY);
+  // Pointer capture retargets click events to the root, so find the element under the pointer. The root node (the
+  // document or a shadow root) finds it; in a shadow root, document.elementFromPoint gives only the host.
+  const under = (e) => root.getRootNode().elementFromPoint(e.clientX, e.clientY);
   const keyAt = (e) => under(e)?.closest?.(".pt-key");
 
   root.addEventListener("dblclick", (e) => {
