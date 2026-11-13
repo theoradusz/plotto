@@ -1,7 +1,7 @@
 import { textOn } from "./theme.js";
 
 // Toolbar and page styles: a floating pill of icon buttons at the top right of the figure.
-// The button size follows the figure width. The styles go into the document once, as one <style> element.
+// The button size follows the figure width. The styles go into the document (or the shadow root) once, as one <style> element.
 
 const ICONS = {
   zoom: '<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><rect x="9" y="9" width="6" height="6"/>',
@@ -50,12 +50,13 @@ const CSS = `
 .pt-error{padding:8px 10px;border-left:3px solid #d93025;background:#fdecea;color:#5f2120;font:12px/1.4 ui-monospace,monospace;white-space:pre-wrap}
 `;
 
-export function installStyles(doc) {
-  if (doc.getElementById("plotto-style")) return;
-  const style = doc.createElement("style");
+// node: the document, or the shadow root that holds the plot (marimo draws its widgets in a shadow root).
+export function installStyles(node) {
+  if (node.getElementById("plotto-style")) return;
+  const style = (node.ownerDocument ?? node).createElement("style");
   style.id = "plotto-style";
   style.textContent = CSS;
-  doc.head.append(style);
+  (node.head ?? node).append(style);
 }
 
 // The theme colors as CSS variables of the root element.

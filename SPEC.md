@@ -222,7 +222,7 @@ A style can also list theme color names as its palette: the `paper` and `dark` s
 
 ## 8. Display and interaction
 
-`draw(spec, element, { interactive, width })` draws the plot into the element.
+`draw(spec, element, { interactive, width })` draws the plot into the element. The element can be in a shadow root (marimo widgets): the styles then go into that shadow root.
 
 | Item | Behavior |
 |---|---|
@@ -270,6 +270,7 @@ Hover:
 | Static SVG | `toSVG(spec)` (JS), `p.save("f.svg")` (Python) | At the size of the theme |
 | PNG | `p.save("f.png", scale=2, width=, height=)` | resvg draws the Node SVG. `width` and `height` lay out again at that size. |
 | Notebook | `p`, `p.interactive()` | `text/html`: the static SVG, the spec and the browser bundle, which calls `draw()`. The bundle loads d3 and Observable Plot from `cdn.jsdelivr.net`. Without the script, the static SVG stays. |
+| marimo | `p`, `p.interactive()` | `_display_()` (Jupyter ignores it). With anywidget: a widget with the traits `spec` and `interactive`, whose module (`widget.js`) calls `draw()`. It loads d3 and Observable Plot from `cdn.jsdelivr.net`. No Node call and no static SVG. Without anywidget: the notebook HTML through `mo.Html`, of which marimo shows the static SVG. |
 | Browser | `draw(spec, el, options)` | Returns `{ state, redraw(), resize(width), destroy() }` |
 | React | `<Plot spec={...} interactive />` (`plotto/react`) | Calls `draw()`; it follows the container width |
 

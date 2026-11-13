@@ -6,6 +6,17 @@ Write each change under "Unreleased". `scripts/release.sh` moves them to the new
 
 ## Unreleased
 
+## 0.6.0 – 2026-11-13
+
+### Added
+
+- In marimo, a plot shows as a live widget, with the toolbar, zoom, pan, hover and the legend toggle. It needs anywidget: `pip install "python-plotto[marimo]"`. The widget needs no Node, so the cell runs faster. Without anywidget, marimo shows the static SVG, as before.
+- The Python package holds `README.md` and `SPEC.md` of its version, in `plotto/_assets/`.
+
+### Fixed
+
+- A plot drawn inside a shadow root gets its toolbar styles, and its legend clicks work.
+
 ## 0.5.2 – 2026-10-26
 
 ### Changed
