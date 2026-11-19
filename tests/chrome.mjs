@@ -10,16 +10,28 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export async function launch() {
   const profile = mkdtempSync(join(tmpdir(), "plotto-chrome-"));
-  const args = ["--headless=new", "--disable-gpu", `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`, "--window-size=1200,900", "about:blank"];
-  const chrome = spawn(CHROME, args, { stdio: "ignore" });
+  // On CI (GitHub sets CI=true), Chrome runs without its sandbox: Ubuntu 24.04 runners restrict the user namespaces
+  // that the sandbox needs, and Chrome then exits at once. The test opens its own local page only.
+  const sandbox = process.env.CI ? ["--no-sandbox"] : [];
+  const args = ["--headless=new", "--disable-gpu", ...sandbox, `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`, "--window-size=1200,900", "about:blank"];
+  const chrome = spawn(CHROME, args, { stdio: ["ignore", "ignore", "pipe"] });
+  // Chrome's own messages and its exit, for the error when it does not start.
+  let log = "";
+  let exited = null;
+  chrome.stderr.on("data", (d) => (log = (log + d).slice(-4000)));
+  chrome.on("exit", (code, signal) => (exited = `it exited with ${code ?? signal}`));
+  chrome.on("error", (e) => (exited = e.message));
   let target;
-  for (let i = 0; i < 50 && !target; i++) {
+  for (let i = 0; i < 150 && !target && !exited; i++) {
     await sleep(200);
     try {
       target = (await (await fetch(`http://127.0.0.1:${PORT}/json`)).json()).find((t) => t.type === "page");
     } catch {}
   }
-  if (!target) throw new Error("Chrome did not start");
+  if (!target) {
+    chrome.kill();
+    throw new Error(`Chrome did not start (${exited ?? "no answer in 30 s"}): ${CHROME}\n${log}`);
+  }
   const ws = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((r) => (ws.onopen = r));
   let id = 0;

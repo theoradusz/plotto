@@ -6,6 +6,8 @@ Write each change under "Unreleased". `scripts/release.sh` moves them to the new
 
 ## Unreleased
 
+## 0.7.0 – 2026-11-19
+
 ### Added
 
 - `point`, `segment` and `errorbar` take `position="dodge"`: each color gets its own slot of the category band, on a category x or y (error bars: x). A color has the same slot in every category, panel and layer, so the intervals of one model always sit with its points.
