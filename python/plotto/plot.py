@@ -7,6 +7,7 @@ any other value is a constant.
 from __future__ import annotations
 
 import json
+from datetime import date, datetime
 
 import numpy as np
 
@@ -17,6 +18,7 @@ GRAMMAR = json.loads(assets.path("grammar.json").read_text())
 THEMES = json.loads(assets.path("theme.json").read_text())
 LAYERS = GRAMMAR["layers"]
 PLOT_CHANNELS = list(dict.fromkeys(ch for layer in LAYERS.values() for ch in layer["channels"]))
+NO_STACK = ("point", "segment", "errorbar")  # layers that dodge but do not stack
 
 
 def plot(data, **mapping) -> Plot:
@@ -34,6 +36,8 @@ def plot(data, **mapping) -> Plot:
         "scales": {},
         "labels": {},
         "info": None,
+        "coord": None,
+        "insets": [],
         "theme": {"style": "pastel"},
     }
     return Plot(state)
@@ -66,6 +70,12 @@ class Plot:
                 layer["set"][key] = _constant(key, value, where, columns)
             else:
                 _fail(where, "option", key, ["data", *definition["channels"], *definition["options"]])
+        if layer["set"].get("position") == "stack" and type_ in NO_STACK:
+            raise ValueError(f"{where}: position must be overlay or dodge")
+        # A polygon takes the column named "geometry" (a GeoJSON or GeoDataFrame table) unless a mapping sets it.
+        plot_geometry = self._s["mapping"].get("geometry")
+        if type_ == "polygon" and "geometry" not in layer["mapping"] and plot_geometry not in columns and "geometry" in columns:
+            layer["mapping"]["geometry"] = "geometry"
         return self._with(data=tables, layers=[*self._s["layers"], layer])
 
     def line(self, **options):
@@ -128,6 +138,15 @@ class Plot:
     def box(self, **options):
         return self._layer("box", **options)
 
+    def polygon(self, **options):
+        """Filled areas from a geometry column (GeoJSON Polygon or MultiPolygon): polygon(fill="households")."""
+        return self._layer("polygon", **options)
+
+    def raster(self, **options):
+        """A grid of cells as one image, colored by the fill scale: raster(x="lon", y="lat", fill="intensity").
+        One row per cell center of a regular grid; missing cells are transparent."""
+        return self._layer("raster", **options)
+
     def facet(self, by, **options) -> Plot:
         _need_column(self._s["data"][0], by, "facet()")
         _check_keys(options, GRAMMAR["facet"], "facet()")
@@ -153,6 +172,9 @@ class Plot:
     def color(self, **options):
         return self._scale("color", options)
 
+    def fill(self, **options):
+        return self._scale("fill", options)
+
     def _scale(self, name, options) -> Plot:
         where = f"{name}()"
         _check_keys(options, GRAMMAR["scales"][name], where)
@@ -168,7 +190,55 @@ class Plot:
             if not isinstance(scale["limits"], (list, tuple)):
                 raise ValueError(f"{where}: limits must be a list, for example [0, 10] or [0, None]")
             scale["limits"] = [None if v is None else to_value(v) for v in scale["limits"]]
+        if "breaks" in scale:
+            breaks = scale["breaks"]
+            if not isinstance(breaks, (list, tuple, np.ndarray)) or not all(_is_break(v) for v in breaks):
+                raise ValueError(f"{where}: breaks must be a list of numbers or dates, for example [1, 2, 5, 10]")
+            scale["breaks"] = [to_value(v) for v in breaks]
+        if "labels" in scale:
+            if "breaks" not in scale:
+                raise ValueError(f"{where}: labels need breaks: one label per break")
+            labels = scale["labels"]
+            if not isinstance(labels, (list, tuple)) or len(labels) != len(scale["breaks"]) or not all(isinstance(v, str) for v in labels):
+                raise ValueError(f"{where}: labels must have one entry per break, as strings")
+            scale["labels"] = list(labels)
+        if "breaks" in scale and name in ("color", "fill"):
+            _check_classes(scale, where)
         return self._with(scales={**self._s["scales"], name: scale})
+
+    def coord(self, type_, **options) -> Plot:
+        """Map coordinates: coord("geo") makes x (longitude) and y (latitude) the same distance per px.
+
+        scalebar, north: True (the default corner) or a corner ("bottom-left", ...), for a scale bar and a north arrow.
+        """
+        if type_ not in GRAMMAR["coord"]:
+            _fail("coord()", "type", type_, GRAMMAR["coord"])
+        _check_keys(options, GRAMMAR["coordOptions"], "coord()")
+        coord = {"type": type_}
+        for key, corner in (("scalebar", "bottom-left"), ("north", "top-right")):
+            v = options.get(key)
+            if v is None or v is False:
+                continue
+            if v is not True and v not in GRAMMAR["corners"]:
+                _fail("coord()", key, v, ["true", *GRAMMAR["corners"]])
+            coord[key] = corner if v is True else v
+        return self._with(coord=coord)
+
+    def inset(self, **options) -> Plot:
+        """An inset: the panel area at (left, bottom, right, top shares of the panel) shows the extent x × y,
+        for example inset(x=[122.9, 131.4], y=[24.0, 28.6], at=[0.02, 0.6, 0.3, 0.98]). Each call adds one inset."""
+        _check_keys(options, GRAMMAR["inset"], "inset()")
+        x, y, at = options.get("x"), options.get("y"), options.get("at")
+        for name, v in (("x", x), ("y", y)):
+            if not isinstance(v, (list, tuple)) or len(v) != 2 or not all(_is_break(n) for n in v) or not to_value(v[0]) < to_value(v[1]):
+                raise ValueError(f"inset(): {name} must be [low, high], for example [122.9, 131.4]")
+        valid = isinstance(at, (list, tuple)) and len(at) == 4 and all(_is_number(n) and 0 <= n <= 1 for n in at)
+        if not valid or at[0] >= at[2] or at[1] >= at[3]:
+            raise ValueError(
+                "inset(): at must be [left, bottom, right, top] as shares of the panel (0 to 1), for example [0.02, 0.6, 0.3, 0.98]"
+            )
+        inset = {"x": [to_value(v) for v in x], "y": [to_value(v) for v in y], "at": [to_value(v) for v in at]}
+        return self._with(insets=[*self._s["insets"], inset])
 
     def labels(self, **options) -> Plot:
         _check_keys(options, GRAMMAR["labels"], "labels()")
@@ -243,6 +313,10 @@ class Plot:
         }
         if s["info"]:
             spec["info"] = s["info"]
+        if s["coord"]:
+            spec["coord"] = s["coord"]
+        if s["insets"]:
+            spec["insets"] = s["insets"]
         spec["theme"] = s["theme"]
         return spec
 
@@ -287,11 +361,34 @@ def _constant(key, value, where, columns):
         raise ValueError(f"{where}: {key} must be a number")
     if kind == "boolean" and not isinstance(value, bool):
         raise ValueError(f"{where}: {key} must be True or False")
-    if key in ("color", "label"):
+    if key in ("color", "fill", "label"):
         return value
     if isinstance(value, str) and not kind:
         raise ValueError(f'{where}: "{value}" is not a column. Columns: {", ".join(columns)}')
     return to_value(value)
+
+
+def _check_classes(scale, where):
+    """A binned color scale: breaks that increase, colors (a list) of one per class, and no mid."""
+    breaks = scale["breaks"]
+    if any(b <= a for a, b in zip(breaks, breaks[1:], strict=False)):
+        raise ValueError(f"{where}: breaks must increase")
+    if "mid" in scale:
+        raise ValueError(f"{where}: mid does not apply with breaks")
+    values = scale.get("values")
+    if values is not None and (not isinstance(values, (list, tuple)) or len(values) != len(breaks)):
+        raise ValueError(f"{where}: with breaks, values must be a list of one color per break (class)")
+
+
+def _is_number(v):
+    return isinstance(v, (int, float, np.integer, np.floating)) and not isinstance(v, (bool, np.bool_))
+
+
+def _is_break(v):
+    """A number or a time (not a bool and not a string): a valid axis break."""
+    if isinstance(v, (bool, np.bool_, str)):
+        return False
+    return isinstance(v, (int, float, np.integer, np.floating, datetime, date, np.datetime64))
 
 
 def _info_entry(pair):

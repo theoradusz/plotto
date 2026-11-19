@@ -3,6 +3,7 @@
 build_site.py draws them into docs/ (the GitHub Pages site); showcase.ipynb shows them in a notebook.
 """
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -146,6 +147,31 @@ def summary():
     )
 
 
+def intervals():
+    """Intervals side by side: position="dodge" on points and segments puts each color in its own slot of the
+    category, here on the y axis. Each color keeps its slot in every row."""
+    df = load("monthly")
+    df["half"] = df.month.dt.month.map(lambda m: "January to June" if m <= 6 else "July to December")
+    s = df.groupby(["site", "half"], as_index=False)["volume"].agg(["mean", "min", "max"])
+    return (
+        plot(s, x="mean", y="site", color="half")
+        .segment(x="min", xend="max", yend="site", size=3, alpha=0.5, position="dodge")
+        .point(size=4, position="dodge")
+        .labels(title="Monthly volume per site and half-year", x="volume (m³): mean (dot) and range (line)", y=None, color=None)
+        .theme(legend="bottom")
+    )
+
+
+def end_labels():
+    """line(direct=True) names each line at its end, in its color, so the plot needs no legend."""
+    return (
+        plot(uv254(), x="time", y="value", color="sensor")
+        .line(direct=True)
+        .labels(title="UV254 over one week", x=None, y="UV254 (1/m)")
+        .theme(legend="none")
+    )
+
+
 # --- Bars and areas -------------------------------------------------------------------------
 
 
@@ -282,6 +308,106 @@ def log_axes():
     )
 
 
+def axis_breaks():
+    """x(breaks=, labels=) sets the ticks and their text. Without breaks, a log axis that spans less than three
+    powers of ten has ticks at 1, 2 and 5 times each power."""
+    df = load("calibration")
+    return (
+        plot(df[df.concentration > 0], x="concentration", y="absorbance", color="batch")
+        .point(size=3)
+        .x(type="log", breaks=[0.5, 1, 2, 5, 10], labels=["0.5", "1", "2", "5", "10 (max)"])
+        .labels(title="Calibration with set ticks", x="concentration (mg/L)")
+    )
+
+
+# --- Maps -----------------------------------------------------------------------------------
+
+
+def districts():
+    """30 made-up districts as a GeoJSON FeatureCollection (make_datasets.py)."""
+    return json.loads((DATA / "districts.geojson").read_text())
+
+
+def choropleth():
+    """A choropleth: polygon(fill=) from a GeoJSON FeatureCollection (or a GeoDataFrame). fill(breaks=) makes classes
+    with a stepped legend; coord("geo") gives the same distance per px in x and y. The lake (a hole) stays empty."""
+    return (
+        plot(districts())
+        .polygon(fill="without_water", tooltip="name")
+        .fill(breaks=[0, 50, 1000, 10000], scheme="yuhi")
+        .coord("geo")
+        .labels(title="Households without water per district", subtitle="After a made-up earthquake", fill="households")
+    )
+
+
+def map_layers():
+    """Outlines and points: polygon() without fill draws the outlines. fill and color are two scales, so a map can
+    show the households (fill) and the outage class of each town (color), each with its legend."""
+    towns = load("district_towns").merge(
+        pd.DataFrame([f["properties"] for f in districts()["features"]])[["name", "without_water"]], on="name"
+    )
+    towns["outage"] = pd.cut(
+        towns.without_water, [0, 1000, 10000, np.inf], right=False, labels=["under 1,000", "1,000 to 9,999", "10,000 or more"]
+    )
+    return (
+        plot(districts())
+        .polygon(fill="households", color="white", size=1)
+        .point(data=towns, x="lon", y="lat", color="outage", size=4)
+        .fill(scheme="sumi")
+        .color(values=["yellow", "orange", "red"])
+        .coord("geo")
+        .labels(title="Households and outages", fill="households", color="households without water")
+        .theme(legend="bottom")
+    )
+
+
+def map_details():
+    """Map details: inset() shows a distant area (here the island) in a box of the panel at its own extent;
+    coord("geo", scalebar=True, north=True) adds a scale bar and a north arrow; text(repel=True) places the town
+    names clear of each other and of the points, with a leader line when a name has to move away."""
+    towns = load("district_towns").merge(
+        pd.DataFrame([f["properties"] for f in districts()["features"]])[["name", "without_water"]], on="name"
+    )
+    hit = towns[towns.without_water >= 1000]
+    return (
+        plot(districts())
+        .polygon(color="gray")
+        .point(data=hit, x="lon", y="lat", color="red", size=4)
+        .text(data=hit, x="lon", y="lat", label="name", repel=True)
+        .x(limits=[139, 140.5])
+        .y(limits=[35, 36])
+        .inset(x=[140.52, 140.7], y=[35.02, 35.18], at=[0.8, 0.02, 0.98, 0.25])
+        .coord("geo", scalebar=True, north=True)
+        .labels(title="Towns with 1,000 or more households without water", caption="The island is in the inset, bottom right.")
+    )
+
+
+def shaking():
+    """A raster under outlines: raster(x=, y=, fill=) draws a regular grid of cells (one row per cell center) as one
+    image, colored by the fill scale; here made-up seismic intensity in the classes of the JMA scale. The outages are
+    points on the color scale, so one figure shows the shaking and the outages, each with its legend."""
+    lon, lat = np.meshgrid(np.arange(139.0125, 140.5, 0.025), np.arange(35 + 1 / 120, 36, 1 / 60))
+    distance = np.hypot((lon - 139.35) * np.cos(np.radians(35.5)), lat - 35.25).ravel()
+    grid = pd.DataFrame({"lon": lon.ravel(), "lat": lat.ravel(), "intensity": 6.9 - 6.5 * distance})
+    towns = load("district_towns").merge(
+        pd.DataFrame([f["properties"] for f in districts()["features"]])[["name", "without_water"]], on="name"
+    )
+    towns["outage"] = pd.cut(
+        towns.without_water, [0, 1000, 10000, np.inf], right=False, labels=["under 1,000", "1,000 to 9,999", "10,000 or more"]
+    )
+    return (
+        plot(grid[grid.intensity >= 3.5], x="lon", y="lat")
+        .raster(fill="intensity", alpha=0.9)
+        .polygon(data=districts(), color="gray", size=0.8)
+        .point(data=towns, x="lon", y="lat", color="outage", size=4)
+        .fill(breaks=[3.5, 4.5, 5.0, 5.5, 6.0, 6.5], labels=["4", "5-", "5+", "6-", "6+", "7"], scheme="yuhi")
+        .color(values=["#BDBDBD", "#6A3D9A", "#1A1238"])
+        .coord("geo", scalebar=True)
+        .labels(title="Shaking and outages", fill="seismic intensity", color="households without water")
+        .theme(legend="bottom")
+    )
+
+
 # --- Styles and output ----------------------------------------------------------------------
 
 
@@ -360,14 +486,16 @@ def square():
 
 
 def titles():
-    """labels() sets the title, subtitle, caption, axis titles and legend title. None removes a title."""
+    """labels() sets the title, subtitle, caption, axis titles and legend title. None removes a title. A long caption
+    wraps at the plot width."""
     return (
         plot(uv254(), x="time", y="value", color="sensor")
         .line()
         .labels(
             title="UV254 over one week",
             subtitle="15-min values of three sensors",
-            caption="Source: made-up data",
+            caption="Source: made-up data. The sensors were cleaned on Monday morning; the gaps are outages of the "
+            "data logger, not of the sensors. Values are 15-min means of 1-min readings.",
             x=None,
             y="UV254 (1/m)",
             color="Sensor",
@@ -421,8 +549,8 @@ PAGES = {
         "file": "types.html",
         "title": "Plot types",
         "sections": {
-            "Lines and areas": [step, area, ribbon, smooth],
-            "Bars and distributions": [stacked_bars, dodged_bars, histogram, box, summary],
+            "Lines and areas": [step, area, ribbon, smooth, end_labels],
+            "Bars and distributions": [stacked_bars, dodged_bars, histogram, box, summary, intervals],
             "Cells and many points": [heatmap, dense],
         },
     },
@@ -435,11 +563,20 @@ PAGES = {
             "Styles and formats": [styles],
         },
     },
+    "maps": {
+        "file": "maps.html",
+        "title": "Maps",
+        "sections": {
+            "Areas and points": [choropleth, map_layers],
+            "Insets, scale bar and labels": [map_details],
+            "Rasters": [shaking],
+        },
+    },
     "scales": {
         "file": "scales.html",
         "title": "Scales and legends",
         "sections": {
-            "Axes": [limits, log_axes, category_order, square],
+            "Axes": [limits, log_axes, axis_breaks, category_order, square],
             "Titles and legends": [titles, info, legends],
             "Interaction": [interaction],
         },

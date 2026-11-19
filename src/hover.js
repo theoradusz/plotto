@@ -13,7 +13,7 @@ const SNAP = 6; // px: series whose nearest x is this close to the snapped x sha
 const KEEP = 4; // px: a new point must be this much nearer to replace the picked one
 const MAX_ROWS = 6; // more series than this at one x: the label shows only the series under the pointer
 const UNIFIED = ["line", "step", "area", "density", "smooth", "ribbon"];
-const SHAPES = ["bar", "hist", "tile", "box"];
+const SHAPES = ["bar", "hist", "tile", "box", "polygon", "raster"];
 const POINTS = ["point", "path", "errorbar"];
 
 // (x, y): px inside panel i. previous: the last hit (for hysteresis). Returns a hit or null.
@@ -71,17 +71,23 @@ function fieldText(state, f, k) {
 
 // --- points ---------------------------------------------------------------------------------
 
-function nearestPoint({ px, py }, panel, x, y, previous) {
+function nearestPoint({ sx, sy, px, py }, panel, x, y, previous) {
   let best = null;
   let kept = null;
   for (const { layer, view, c } of panel.layers) {
     if (!POINTS.includes(layer.type) || !view.hover || !view.n) continue;
     const { hx, hy } = view.hover;
+    // A dodged point sits off the center of its band by its share of the bandwidth.
+    const shift = view.shift;
+    const step = shift ? ((shift.axis === "x" ? sx : sy).bandwidth ?? 0) : 0;
+    const dx = (k) => (shift?.axis === "x" ? shift.frac[k] * step : 0);
+    const dy = (k) => (shift?.axis === "y" ? shift.frac[k] * step : 0);
     for (let k = 0; k < view.n; k++) {
       if (hx[k] === null || hy[k] === null) continue;
-      const d = Math.hypot(px(hx[k]) - x, py(hy[k]) - y);
+      const [hitX, hitY] = [px(hx[k]) + dx(k), py(hy[k]) + dy(k)];
+      const d = Math.hypot(hitX - x, hitY - y);
       if (d > RADIUS) continue;
-      const hit = { layer, view, c, k, d, x: px(hx[k]), y: py(hy[k]) };
+      const hit = { layer, view, c, k, d, x: hitX, y: hitY };
       if (!best || d < best.d) best = hit;
       if (previous?.layer === layer && previous.k === k) kept = hit;
     }
@@ -179,8 +185,13 @@ function boxUnderAny(ctx, panel, x) {
 // or else the top one. Tiles: the cell under the pointer (band padding included).
 function shapeUnder(ctx, panel, x, y) {
   const { state, sx, sy } = ctx;
-  for (const { layer, view, c } of panel.layers) {
+  for (const { layer, view, c } of [...panel.layers].reverse()) { // the top layer first
     if (!SHAPES.includes(layer.type) || layer.type === "box" || !view.n) continue;
+    if (layer.type === "polygon" || layer.type === "raster") {
+      const hit = layer.type === "polygon" ? polygonUnder(ctx, layer, view, c, x, y) : rasterUnder(ctx, layer, view, x, y);
+      if (hit) return hit;
+      continue;
+    }
     const tile = layer.type === "tile";
     let best = null;
     for (let k = 0; k < view.n; k++) {
@@ -209,6 +220,45 @@ function shapeUnder(ctx, panel, x, y) {
     return stackHit(state, layer, view, c, k, rect);
   }
   return null;
+}
+
+// The polygon under the pointer (the last drawn, on top): its tooltip value as the header, and its fill and color.
+function polygonUnder({ state, sx, sy }, layer, view, c, x, y) {
+  if (!sx.invert || !sy.invert) return null;
+  const [px, py] = [sx.invert(x), sy.invert(y)];
+  const { xmin, xmax, ymin, ymax, geometry } = view.cols;
+  for (let k = view.n - 1; k >= 0; k--) {
+    if (!geometry[k] || px < xmin[k] || px > xmax[k] || py < ymin[k] || py > ymax[k] || !contains(geometry[k], [px, py])) continue;
+    const fillCh = layer.channels.fill;
+    const color = fillCh?.column ? state.fill.apply(view.cols.fill[k]) : fillCh?.value ?? seriesColor(state, layer, view, c, k);
+    const header = view.hover.header ? fieldText(state, view.hover.header, k) : null;
+    const rows = view.hover.fields.map((f) => ({ label: f.label, value: fieldText(state, f, k) }));
+    return { layer, k, color, header, rows, marks: [], anchor: { x, y } };
+  }
+  return null;
+}
+
+// The raster cell under the pointer: its value as the header, and its x and y (the cell center).
+function rasterUnder({ state, sx, sy }, layer, view, x, y) {
+  const g = view.grid;
+  if (!g || !sx.invert || !sy.invert) return null;
+  const i = Math.round((sx.invert(x) - g.x.lo) / g.x.step);
+  const j = Math.round((sy.invert(y) - g.y.lo) / g.y.step);
+  if (i < 0 || j < 0 || i >= g.x.n || j >= g.y.n) return null;
+  g.cells ??= new Map(g.x.index.map((xi, k) => [g.y.index[k] * g.x.n + xi, k]));
+  const k = g.cells.get(j * g.x.n + i);
+  if (k === undefined || view.cols.fill[k] === null) return null;
+  const [xf, yf, ff] = view.hover.fields;
+  const fillCh = layer.channels.fill;
+  const color = fillCh.column ? state.fill.apply(view.cols.fill[k]) : fillCh.value;
+  const rows = [xf, yf].map((f) => ({ label: f.label, value: fieldText(state, f, k) }));
+  return { layer, k, color, header: `${ff.label}  ${fieldText(state, ff, k)}`, rows, marks: [], anchor: { x, y } };
+}
+
+// Even-odd rule: a point is in a polygon when an odd number of its rings contain it.
+function contains(g, point) {
+  const polygons = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+  return polygons.some((rings) => rings.filter((ring) => d3.polygonContains(ring, point)).length % 2 === 1);
 }
 
 // Half of the free space around a band (category) cell, in px.

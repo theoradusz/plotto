@@ -31,12 +31,18 @@ LAYER_DOC = {
     "text": "Text labels at (x, y).",
     "errorbar": "Vertical error bars from ymin to ymax, with caps.",
     "box": "Box plots of y per x: quartiles, whiskers at 1.5 IQR, outliers.",
+    "polygon": "Areas of GeoJSON Polygon and MultiPolygon geometries (holes stay empty), for choropleths and outlines. "
+    "Without geometry: the column named geometry. Without fill: outlines only.",
+    "raster": "A regular grid of cells (one row per cell center), drawn as one image colored by the fill scale, for "
+    "example a 1 km mesh of seismic intensity under outlines. Missing cells are transparent.",
 }
 
 CHANNEL_DOC = {
     "x": "Horizontal position",
     "y": "Vertical position",
-    "color": "Stroke of lines; fill of points, bars, areas and cells",
+    "color": "Stroke of lines; fill of points, bars, areas and cells; outline of polygons",
+    "fill": "Fill of polygons and rasters (the fill scale, with its own legend)",
+    "geometry": "A geometry column: GeoJSON geometries, a GeoDataFrame geometry column, or the geometry of a FeatureCollection",
     "group": "Splits lines and areas without a color",
     "tooltip": "An extra column in the hover label",
     "label": "The text of a text layer",
@@ -56,12 +62,18 @@ OPTION_DOC = {
     "summary": ('"mean" | "median" | "min" | "max" | "sum"', "One row per (x, color, group), with the summary of y"),
     "slope": ("number", "Slope (default 1)"),
     "intercept": ("number", "Intercept (default 0)"),
-    "position": ('"stack" | "dodge" | "overlay"', "How the bars or areas of one x share the space (default stack; dodge for bars only)"),
+    "position": (
+        '"stack" | "dodge" | "overlay"',
+        "How the colors of one category share the space. Bars and areas: stack (default), dodge (bars), overlay. "
+        "Points and segments: overlay (default) or dodge, along the category axis (x or y). Error bars: dodge on a category x.",
+    ),
     "bins": ("number", "About this number of bins, on round values (default 30)"),
     "density": ("bool", "Counts divided by (rows × bin width)"),
     "method": ('"lm" | "loess"', "Linear fit (default) or local regression"),
     "span": ("0–1", "Share of the points in each loess fit (default 0.75)"),
     "band": ("bool", "The 95% band of a linear fit (default True)"),
+    "direct": ("bool", "The name of each line (its group, else its color) right of its last point; with long names on 2 lines"),
+    "repel": ("bool", "Each label moves to a free place near its point, clear of other labels and points; leader lines for far labels"),
 }
 
 # (signature, description, [(parameter, type, description)])
@@ -70,7 +82,11 @@ PLOT = [
         "plot(data, **mapping) → Plot",
         "Starts a plot. The mappings apply to every layer that accepts the channel.",
         [
-            ("data", "DataFrame | list[dict]", "Long-format data. JS: an array of row objects."),
+            (
+                "data",
+                "DataFrame | list[dict] | GeoJSON",
+                "Long-format data. JS: an array of row objects. A GeoJSON FeatureCollection gives one row per feature (column geometry).",
+            ),
             (
                 "**mapping",
                 "channel=column",
@@ -100,7 +116,7 @@ METHODS = [
         ],
     ),
     (
-        "x(type=None, limits=None, format=None)  ·  y(...)",
+        "x(type=None, limits=None, format=None, breaks=None, labels=None)  ·  y(...)",
         "The position scales.",
         [
             ("type", '"linear" | "log" | "time" | "category"', "Default: from the column type"),
@@ -110,22 +126,51 @@ METHODS = [
                 "The first view. None keeps the data bound on that side. On a category axis: the categories and their order.",
             ),
             ("format", "str", 'A d3-format (numbers, for example ".1f") or d3-time-format (times, for example "%H:%M") pattern'),
+            ("breaks", "list", "The ticks, for example [1, 1.5, 2, 3, 5, 10]. Number, log and time axes; no minor grid lines."),
+            ("labels", "list[str]", "The text of each break, in the order of breaks"),
         ],
     ),
     (
-        "color(values=None, palette=None, scheme=None, limits=None, mid=None, clamp=False)",
-        "The color scale.",
+        "color(values=None, palette=None, scheme=None, limits=None, mid=None, clamp=False, breaks=None, labels=None)  ·  fill(...)",
+        "The color scales: color() for the color channel, fill() for the fill of polygons. Each has its own legend.",
         [
-            ("values", "list | dict", "Colors in order, or category → color. Theme color names or CSS colors."),
+            (
+                "values",
+                "list | dict",
+                "Colors in order, or category → color. Theme color names or CSS colors. With breaks: one color per break.",
+            ),
             ("palette", "str", "Category colors: " + ", ".join(THEMES["palettes"])),
             ("scheme", "str | list", "Number colors: " + ", ".join(THEMES["schemes"]) + ", or a d3 scheme (viridis, magma, …)"),
             ("limits", "[low, high] | list", "The range of a number scale (None keeps the data bound), or the categories and their order"),
             ("mid", "number", "Diverging: the value at the center color"),
-            ("clamp", "bool", "Values outside the limits take the end color (default: muted gray)"),
+            ("clamp", "bool", "Values outside the limits (or below the first break) take the end color (default: muted gray)"),
+            (
+                "breaks",
+                "list",
+                "Classes of a number or time column: [b0, b1), …, [bn, ∞), for example [0, 50, 1000, 10000]. A stepped legend.",
+            ),
+            ("labels", "list[str]", "With breaks: a name per class, shown on the steps of the legend"),
         ],
     ),
     (
-        "labels(title=, subtitle=, caption=, x=, y=, color=)",
+        'coord("geo", scalebar=None, north=None)',
+        "Map coordinates: x is the longitude and y the latitude, at the same distance per px in x and y. The panels take "
+        "the shape of the map; tick labels are in degrees.",
+        [
+            ("scalebar", "True | corner", 'A scale bar: True (bottom left) or "bottom-left", "bottom-right", "top-left", "top-right"'),
+            ("north", "True | corner", "A north arrow: True (top right) or a corner"),
+        ],
+    ),
+    (
+        "inset(x=, y=, at=)",
+        "An inset panel: the extent x × y in a box of each panel, for distant areas (islands). Each call adds one.",
+        [
+            ("x, y", "[low, high]", "The extent of the inset"),
+            ("at", "[left, bottom, right, top]", "The box, in shares of the panel (0 to 1) from its bottom left"),
+        ],
+    ),
+    (
+        "labels(title=, subtitle=, caption=, x=, y=, color=, fill=)",
         "The titles. None removes one. A missing axis title is the column name.",
         [],
     ),

@@ -3,7 +3,12 @@
 // To add a layer type: add one entry here, one entry in grammar.json and, for a statistic, a case in views.js.
 import * as Plot from "@observablehq/plot";
 import * as d3 from "d3";
+import { DIRECT } from "./layout.js";
+import { pngDataURI } from "./png.js";
+import { placeLabels } from "./repel.js";
 import { boxStats } from "./stats.js";
+import { textWidth } from "./text.js";
+import { readable } from "./theme.js";
 
 const DASH = { solid: undefined, dashed: "6,4", dotted: "1.5,3", dashdot: "6,3,1.5,3" };
 const clip = "frame";
@@ -23,7 +28,10 @@ const first = (c) => c.theme.palette[0];
 const lineOf = (curve) => (c) => [Plot.line(c.index, { x: c.v("x"), y: c.v("y"), z: c.groups(), curve, ...strokeStyle(c, first(c)), clip })];
 
 export const LAYERS = {
-  line: (c) => [Plot.line(c.index, { x: c.v("x"), y: c.v("y"), z: c.groups(), sort: { channel: "x" }, ...strokeStyle(c, first(c)), clip })],
+  line: (c) => [
+    Plot.line(c.index, { x: c.v("x"), y: c.v("y"), z: c.groups(), sort: { channel: "x" }, ...strokeStyle(c, first(c)), clip }),
+    ...(c.options.direct ? endLabels(c) : []),
+  ],
 
   path: lineOf("linear"),
 
@@ -31,7 +39,9 @@ export const LAYERS = {
 
   point: (c) => {
     const options = { x: jittered(c), y: c.v("y"), r: c.options.size ?? c.theme.point, ...fillStyle(c, first(c)), clip };
-    if (c.options.jitter && c.kind.x === "category") options.render = jitterRender(c.options.jitter);
+    const jitter = c.options.jitter && c.kind.x === "category" ? jitterRender(c.options.jitter) : null;
+    const render = [dodgeRender(c), jitter].filter(Boolean);
+    if (render.length) options.render = render.reduce(composeRender);
     return [Plot.dot(c.index, options)];
   },
 
@@ -83,7 +93,7 @@ export const LAYERS = {
     return [Plot.line([0, 1], { x: [x0, x1], y: [intercept + slope * x0, intercept + slope * x1], ...strokeStyle(c, c.theme.muted), strokeWidth: c.options.size ?? 1, clip })];
   },
 
-  segment: (c) => [Plot.link(c.index, { x1: c.v("x"), y1: c.v("y"), x2: c.v("xend"), y2: c.v("yend"), ...strokeStyle(c, c.theme.ink), clip })],
+  segment: (c) => [Plot.link(c.index, { x1: c.v("x"), y1: c.v("y"), x2: c.v("xend"), y2: c.v("yend"), ...strokeStyle(c, c.theme.ink), render: dodgeRender(c), clip })],
 
   rect: (c) => [Plot.rect(c.index, { x1: c.v("xmin"), x2: c.v("xmax"), y1: c.v("ymin"), y2: c.v("ymax"), ...fillStyle(c, first(c)), clip })],
 
@@ -105,21 +115,65 @@ export const LAYERS = {
     return [Plot.rect(c.index, { x1, x2, y1, y2, ...fill, clip })];
   },
 
-  text: (c) => [
-    Plot.text(c.index, { x: c.v("x"), y: c.v("y"), text: c.v("label"), fontSize: c.options.size ?? c.fonts.tick, ...fillStyle(c, c.theme.ink), clip }),
-  ],
+  text: (c) => {
+    const size = c.options.size ?? c.fonts.tick;
+    const options = { x: c.v("x"), y: c.v("y"), text: c.v("label"), fontSize: size, ...fillStyle(c, c.theme.ink), clip };
+    if (c.options.repel) options.render = repelRender(c, size);
+    return [Plot.text(c.index, options)];
+  },
 
   errorbar: (c) => {
-    const style = { ...strokeStyle(c, c.theme.ink), strokeWidth: c.options.size ?? 1.2 };
+    const style = { ...strokeStyle(c, c.theme.ink), strokeWidth: c.options.size ?? 1.2, render: dodgeRender(c) };
     const rule = Plot.ruleX(c.index, { x: c.v("x"), y1: c.v("ymin"), y2: c.v("ymax"), ...style, clip });
     if (c.kind.x === "category") {
-      const inset = c.bandwidth.x * 0.35;
+      // A cap is 30% of the band, or 60% of its slot when the colors dodge.
+      const inset = (c.bandwidth.x - Math.min(0.3, 0.6 / (c.shift?.slots ?? 1)) * c.bandwidth.x) / 2;
       const cap = (ch) => Plot.tickY(c.index, { x: c.v("x"), y: c.v(ch), ...style, insetLeft: inset, insetRight: inset, clip });
       return [rule, cap("ymin"), cap("ymax")];
     }
     const [x1, x2] = spread(c.v("x"), 0.25);
     const cap = (ch) => Plot.link(c.index, { x1, x2, y1: c.v(ch), y2: c.v(ch), ...style, clip });
     return [rule, cap("ymin"), cap("ymax")];
+  },
+
+  // Areas of GeoJSON polygons, through the x and y scales (no projection). Without fill: outlines in muted; with fill:
+  // thin outlines in the background color, which separate the areas. Holes are cut (even-odd rule).
+  polygon: (c) => {
+    const fill = c.fills(null);
+    const stroke = c.colors(fill ? c.theme.background : c.theme.muted);
+    const strokeWidth = c.options.size ?? (fill ? 0.5 : 0.6);
+    const style = fill ? { fill, fillOpacity: c.options.alpha ?? 1 } : { fill: "none", strokeOpacity: c.options.alpha ?? 1 };
+    return [Plot.geo(c.index, { geometry: c.v("geometry"), ...style, stroke, strokeWidth, strokeLinejoin: "round", render: evenOdd, clip })];
+  },
+
+  // A grid of cells as one image, in a nested svg that clips it to the frame. The image has one pixel per cell; it is
+  // made once per view (a zoom only moves it) and drawn without smoothing.
+  raster: (c) => {
+    if (c.kind.x === "log" || c.kind.y === "log" || c.kind.x === "category" || c.kind.y === "category") {
+      throw new Error("raster(): x and y must be number or time axes, not log or category axes");
+    }
+    const { x, y } = c.grid;
+    const uri = (c.cache.png ??= rasterPNG(c));
+    return [
+      (index, scales, values, dimensions, context) => {
+        const doc = context.document;
+        const el = (name, attrs) => {
+          const e = doc.createElementNS("http://www.w3.org/2000/svg", name);
+          for (const [k, v] of Object.entries(attrs)) if (v !== undefined) e.setAttribute(k, v);
+          return e;
+        };
+        const { marginLeft: ml, marginTop: mt, marginRight: mr, marginBottom: mb, width, height } = dimensions;
+        const [x0, x1] = [scales.x(x.edges[0]), scales.x(x.edges[1])];
+        const [y0, y1] = [scales.y(y.edges[1]), scales.y(y.edges[0])];
+        const frame = el("svg", { "aria-label": "raster", x: ml, y: mt, width: width - ml - mr, height: height - mt - mb, overflow: "hidden" });
+        const image = { href: uri, x: x0 - ml, y: y0 - mt, width: x1 - x0, height: y1 - y0, preserveAspectRatio: "none" };
+        // No smoothing: resvg knows optimizeSpeed (the last declaration wins there); browsers take pixelated, or
+        // optimizeSpeed as its legacy alias.
+        const style = { "image-rendering": "optimizeSpeed", style: "image-rendering:pixelated;image-rendering:optimizeSpeed", opacity: c.options.alpha };
+        frame.append(el("image", { ...image, ...style }));
+        return frame;
+      },
+    ];
   },
 
   // One Tukey box per category, in the series color: a light box from q1 to q3, a bold median, whiskers with caps,
@@ -146,6 +200,57 @@ export const LAYERS = {
   },
 };
 
+// Direct labels: the name of each series right of its last point in view, in the series color made readable.
+// The labels are outside the frame (in the right margin of the panel), so they are not clipped.
+function endLabels(c) {
+  const keys = c.groups();
+  if (!keys || !c.direct) return [];
+  const [x, y, colors] = [c.v("x"), c.v("y"), c.colors(first(c))];
+  const [lo, hi] = c.domain.x.map(Number);
+  const ends = new Map(); // series → row of its last point in view
+  for (const i of c.index) {
+    if (x[i] === null || y[i] === null || +x[i] < lo || +x[i] > hi) continue;
+    const k = keys[i];
+    if (!ends.has(k) || +x[i] > +x[ends.get(k)]) ends.set(k, i);
+  }
+  const size = c.direct.size;
+  const rows = [...ends].map(([k, i]) => {
+    const lines = c.direct.lines.get(String(k)) ?? [String(k)];
+    return { x: x[i], y: y[i], text: lines.join("\n"), h: lines.length * size * DIRECT.line, color: readable(Array.isArray(colors) ? colors[i] : colors, c.theme.background) };
+  });
+  return [
+    Plot.text(rows, {
+      x: "x",
+      y: "y",
+      text: "text",
+      fill: "color",
+      fontSize: size,
+      lineHeight: DIRECT.line,
+      textAnchor: "start",
+      dx: size * DIRECT.gap,
+      render: spreadY(rows.map((r) => r.h)),
+    }),
+  ];
+}
+
+// Moves labels apart vertically so that they do not overlap, and keeps them inside the panel when there is room.
+function spreadY(heights) {
+  return (index, scales, values, dimensions, context, next) => {
+    const y = Float64Array.from(values.y);
+    const [top, bottom] = [dimensions.marginTop, dimensions.height - dimensions.marginBottom];
+    const order = [...index].sort((a, b) => y[a] - y[b]);
+    const apart = (a, b) => (heights[a] + heights[b]) / 2;
+    for (let k = 1; k < order.length; k++) y[order[k]] = Math.max(y[order[k]], y[order[k - 1]] + apart(order[k - 1], order[k]));
+    const last = order.at(-1);
+    if (last !== undefined) y[last] = Math.min(y[last], bottom - heights[last] / 2);
+    for (let k = order.length - 2; k >= 0; k--) y[order[k]] = Math.min(y[order[k]], y[order[k + 1]] - apart(order[k], order[k + 1]));
+    const head = order[0];
+    if (head !== undefined) y[head] = Math.max(y[head], top + heights[head] / 2);
+    for (let k = 1; k < order.length; k++) y[order[k]] = Math.max(y[order[k]], y[order[k - 1]] + apart(order[k - 1], order[k]));
+    return next(index, scales, { ...values, y }, dimensions, context);
+  };
+}
+
 // Overlaid fills are see-through, stacked fills are solid.
 function stackAlpha(c, solid = 0.9) {
   return c.options.position === "overlay" ? 0.45 : solid;
@@ -167,6 +272,78 @@ function jittered(c) {
   const random = d3.randomUniform.source(d3.randomLcg(42))(-1, 1);
   const [lo] = spread(x, c.options.jitter);
   return x.map((v, i) => +v + (+v - +lo[i]) * random()).map((v) => (x[0] instanceof Date ? new Date(v) : v));
+}
+
+// Dodge: moves each row along the category axis by its offset (c.shift, from views.js), as a share of the band.
+// Observable Plot centers a band mark with a transform of the group, so the offset adds to the channel values.
+function dodgeRender(c) {
+  if (!c.shift) return undefined;
+  const { axis, frac } = c.shift;
+  const step = c.bandwidth[axis];
+  const keys = axis === "x" ? ["x", "x1", "x2"] : ["y", "y1", "y2"];
+  return (index, scales, values, dimensions, context, next) => {
+    const moved = { ...values };
+    for (const k of keys) if (values[k]) moved[k] = Float64Array.from(values[k], (v, i) => v + frac[i] * step);
+    return next(index, scales, moved, dimensions, context);
+  };
+}
+
+// The RGBA pixels of a raster (row 0 at the top, the highest y), from the fill colors; a missing value is
+// transparent.
+function rasterPNG(c) {
+  const { x, y } = c.grid;
+  const [values, colors] = [c.v("fill"), c.fills(null)];
+  const rgba = new Uint8Array(x.n * y.n * 4);
+  const bytes = new Map();
+  for (let k = 0; k < values.length; k++) {
+    const [i, j] = [x.index[k], y.index[k]];
+    if (i < 0 || j < 0 || values[k] === null) continue;
+    const css = Array.isArray(colors) ? colors[k] : colors;
+    if (!bytes.has(css)) {
+      const q = d3.rgb(css);
+      bytes.set(css, [q.r, q.g, q.b, Math.round((Number.isNaN(q.opacity) ? 1 : q.opacity) * 255)]);
+    }
+    rgba.set(bytes.get(css), ((y.n - 1 - j) * x.n + i) * 4);
+  }
+  return pngDataURI(x.n, y.n, rgba);
+}
+
+// text(repel=true): each label moves to a free place near its anchor (repel.js), clear of the other labels, of their
+// anchors and of the points of the panel; a label far from its anchor gets a leader line.
+function repelRender(c, size) {
+  return (index, scales, values, dimensions, context, next) => {
+    const labels = c.v("label");
+    const anchors = Array.from(index, (i) => ({ x: values.x[i], y: values.y[i] })); // index can be a typed array
+    const sizes = Array.from(index, (i) => ({ w: textWidth(String(labels[i] ?? ""), size, false, c.theme.metrics), h: size * 1.2 }));
+    const points = c.obstacles().flatMap((o) => o.x.map((x, k) => ({ x: scales.x(x), y: scales.y(o.y[k]), r: o.r + 1 })));
+    const obstacles = [...anchors.map((a) => ({ ...a, r: 2 })), ...points.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))];
+    const { marginLeft, marginTop, marginRight, marginBottom, width, height } = dimensions;
+    const bounds = { x0: marginLeft, y0: marginTop, x1: width - marginRight, y1: height - marginBottom };
+    const spots = placeLabels(anchors, sizes, obstacles, bounds, size, c.blocked ?? []);
+    const [x, y] = [Float64Array.from(values.x), Float64Array.from(values.y)];
+    Array.from(index).forEach((i, k) => ([x[i], y[i]] = [spots[k].x, spots[k].y]));
+    const g = next(index, scales, { ...values, x, y }, dimensions, context);
+    const leaders = spots.flatMap((s, k) => (s.leader ? [`M${anchors[k].x},${anchors[k].y}L${s.leader.x},${s.leader.y}`] : []));
+    if (leaders.length) {
+      const path = context.document.createElementNS("http://www.w3.org/2000/svg", "path");
+      for (const [k, v] of Object.entries({ d: leaders.join(""), fill: "none", stroke: c.theme.muted, "stroke-width": 0.8 })) path.setAttribute(k, v);
+      g.insertBefore(path, g.firstChild);
+    }
+    return g;
+  };
+}
+
+// Holes of a polygon (inner rings) stay empty, whatever the direction of their rings.
+function evenOdd(index, scales, values, dimensions, context, next) {
+  const g = next(index, scales, values, dimensions, context);
+  g.setAttribute("fill-rule", "evenodd");
+  return g;
+}
+
+// Two render transforms in a row: a runs first, then b, then the mark.
+function composeRender(a, b) {
+  return (index, scales, values, dimensions, context, next) =>
+    a(index, scales, values, dimensions, context, (i, s, v, d, ctx) => b(i, s, v, d, ctx, next));
 }
 
 function jitterRender(fraction) {

@@ -6,6 +6,7 @@ import THEMES from "../theme.json" with { type: "json" };
 
 const LAYERS = GRAMMAR.layers;
 const PLOT_CHANNELS = [...new Set(Object.values(LAYERS).flatMap((l) => l.channels))];
+const NO_STACK = ["point", "segment", "errorbar"]; // layers that dodge but do not stack
 
 export function plot(rows, mapping = {}) {
   const data = [toTable(rows, "plot()")];
@@ -13,7 +14,7 @@ export function plot(rows, mapping = {}) {
     if (!PLOT_CHANNELS.includes(ch)) fail("plot()", "channel", ch, PLOT_CHANNELS);
     needColumn(data[0], col, "plot()");
   }
-  return new Builder({ data, mapping, layers: [], facet: null, scales: {}, labels: {}, info: null, theme: { style: "pastel" } });
+  return new Builder({ data, mapping, layers: [], facet: null, scales: {}, labels: {}, info: null, coord: null, insets: [], theme: { style: "pastel" } });
 }
 
 class Builder {
@@ -44,6 +45,9 @@ class Builder {
       else if (def.channels.includes(key) || def.options.includes(key)) layer.set[key] = constant(key, value, where, columns);
       else fail(where, "option", key, ["data", ...def.channels, ...def.options]);
     }
+    if (layer.set.position === "stack" && NO_STACK.includes(type)) throw new Error(`${where}: position must be overlay or dodge`);
+    // A polygon takes the column named "geometry" (a GeoJSON or GeoDataFrame table) unless a mapping sets it.
+    if (type === "polygon" && !layer.mapping.geometry && !(this.#s.mapping.geometry in columns) && "geometry" in columns) layer.mapping.geometry = "geometry";
     return this.#with({ data: tables, layers: [...this.#s.layers, layer] });
   }
 
@@ -67,6 +71,8 @@ class Builder {
   text(options) { return this.#layer("text", options); }
   errorbar(options) { return this.#layer("errorbar", options); }
   box(options) { return this.#layer("box", options); }
+  polygon(options) { return this.#layer("polygon", options); }
+  raster(options) { return this.#layer("raster", options); }
 
   facet(by, options = {}) {
     needColumn(this.#s.data[0], by, "facet()");
@@ -86,6 +92,7 @@ class Builder {
   x(options) { return this.#scale("x", options); }
   y(options) { return this.#scale("y", options); }
   color(options) { return this.#scale("color", options); }
+  fill(options) { return this.#scale("fill", options); }
 
   #scale(name, options = {}) {
     const where = `${name}()`;
@@ -98,7 +105,51 @@ class Builder {
       if (!Array.isArray(scale.limits)) throw new Error(`${where}: limits must be a list, for example [0, 10] or [0, null]`);
       scale.limits = scale.limits.map((v) => (v === null || v === undefined ? null : toValue(v)));
     }
+    if (scale.breaks !== undefined) {
+      if (!Array.isArray(scale.breaks) || !scale.breaks.every((v) => typeof v === "number" || v instanceof Date)) {
+        throw new Error(`${where}: breaks must be a list of numbers or dates, for example [1, 2, 5, 10]`);
+      }
+      scale.breaks = scale.breaks.map(toValue);
+    }
+    if (scale.labels !== undefined) {
+      if (scale.breaks === undefined) throw new Error(`${where}: labels need breaks: one label per break`);
+      if (!Array.isArray(scale.labels) || scale.labels.length !== scale.breaks.length || !scale.labels.every((l) => typeof l === "string")) {
+        throw new Error(`${where}: labels must have one entry per break, as strings`);
+      }
+    }
+    if (scale.breaks !== undefined && (name === "color" || name === "fill")) checkClasses(scale, where);
     return this.#with({ scales: { ...this.#s.scales, [name]: scale } });
+  }
+
+  // Map coordinates: coord("geo") makes x (longitude) and y (latitude) the same distance per px.
+  // scalebar, north: true (the default corner) or a corner, for a scale bar and a north arrow.
+  coord(type, options = {}) {
+    if (!GRAMMAR.coord.includes(type)) fail("coord()", "type", type, GRAMMAR.coord);
+    checkKeys(options, GRAMMAR.coordOptions, "coord()");
+    const coord = { type };
+    for (const [key, corner] of [["scalebar", "bottom-left"], ["north", "top-right"]]) {
+      const v = options[key];
+      if (v === undefined || v === null || v === false) continue;
+      if (v !== true && !GRAMMAR.corners.includes(v)) fail("coord()", key, v, ["true", ...GRAMMAR.corners]);
+      coord[key] = v === true ? corner : v;
+    }
+    return this.#with({ coord });
+  }
+
+  // An inset: the panel area at (left, bottom, right, top shares of the panel) shows the extent x × y, for example
+  // the Okinawa islands on a map of Japan. Each call adds one inset.
+  inset(options = {}) {
+    checkKeys(options, GRAMMAR.inset, "inset()");
+    const { x, y, at } = options;
+    for (const [name, v] of [["x", x], ["y", y]]) {
+      if (!Array.isArray(v) || v.length !== 2 || !v.every((n) => typeof n === "number" || n instanceof Date) || +v[0] >= +v[1]) {
+        throw new Error(`inset(): ${name} must be [low, high], for example [122.9, 131.4]`);
+      }
+    }
+    if (!Array.isArray(at) || at.length !== 4 || !at.every((n) => typeof n === "number" && n >= 0 && n <= 1) || at[0] >= at[2] || at[1] >= at[3]) {
+      throw new Error("inset(): at must be [left, bottom, right, top] as shares of the panel (0 to 1), for example [0.02, 0.6, 0.3, 0.98]");
+    }
+    return this.#with({ insets: [...this.#s.insets, { x: x.map(toValue), y: y.map(toValue), at: at.map(toValue) }] });
   }
 
   labels(options = {}) {
@@ -136,23 +187,41 @@ class Builder {
       if (col) used.forEach((set, i) => col in s.data[i].columns && set.add(col));
     }
     const data = s.data.map((t, i) => ({ columns: Object.fromEntries([...used[i]].map((c) => [c, t.columns[c]])) }));
-    return { version: 1, data, mapping: s.mapping, layers: s.layers, facet: s.facet, scales: s.scales, labels: s.labels, ...(s.info ? { info: s.info } : {}), theme: s.theme };
+    return { version: 1, data, mapping: s.mapping, layers: s.layers, facet: s.facet, scales: s.scales, labels: s.labels, ...(s.info ? { info: s.info } : {}), ...(s.coord ? { coord: s.coord } : {}), ...(s.insets.length ? { insets: s.insets } : {}), theme: s.theme };
   }
 }
 
-// Rows (array of objects) to columnar data with one type per column: number, time or string.
+// Rows (array of objects) to columnar data with one type per column: number, time, string or geometry.
+// A GeoJSON FeatureCollection gives one row per feature: its properties and its geometry (column "geometry").
 function toTable(rows, where) {
-  if (!Array.isArray(rows)) throw new Error(`${where}: data must be an array of row objects`);
+  if (rows?.type === "FeatureCollection" && Array.isArray(rows.features)) rows = rows.features.map((f) => ({ ...f.properties, geometry: f.geometry }));
+  if (!Array.isArray(rows)) throw new Error(`${where}: data must be an array of row objects or a GeoJSON FeatureCollection`);
   const names = [...new Set(rows.flatMap(Object.keys))];
   const columns = {};
   for (const name of names) {
     const raw = rows.map((r) => r[name] ?? null);
     const first = raw.find((v) => v !== null && !Number.isNaN(v));
+    if (isGeometry(first)) {
+      columns[name] = { type: "geometry", values: raw.map((v) => (v === null ? null : geometry(v))) };
+      continue;
+    }
     const type = first instanceof Date ? "time" : typeof first === "number" ? "number" : "string";
     const values = raw.map((v) => (v === null || Number.isNaN(v) ? null : type === "string" ? String(v) : toValue(v)));
     columns[name] = { type, values };
   }
   return { columns };
+}
+
+// A GeoJSON geometry object: { type, coordinates }.
+function isGeometry(v) {
+  return typeof v === "object" && v !== null && typeof v.type === "string" && Array.isArray(v.coordinates);
+}
+
+// A geometry with its coordinates rounded to GEO_DIGITS decimals (about 1 m in degrees).
+const GEO_DIGITS = 1e5;
+function geometry({ type, coordinates }) {
+  const round = (c) => (typeof c === "number" ? Math.round(c * GEO_DIGITS) / GEO_DIGITS : c.map(round));
+  return { type, coordinates: round(coordinates) };
 }
 
 // Dates become wall-clock epoch ms (the time that the clock shows); floats keep 6 significant digits.
@@ -168,7 +237,7 @@ function constant(key, value, where, columns) {
   if (Array.isArray(kind) && !kind.includes(value)) fail(where, key, value, kind);
   if (kind === "number" && typeof value !== "number") throw new Error(`${where}: ${key} must be a number`);
   if (kind === "boolean" && typeof value !== "boolean") throw new Error(`${where}: ${key} must be true or false`);
-  if (key === "color" || key === "label") return value; // spec.js validates the color against the theme
+  if (key === "color" || key === "fill" || key === "label") return value; // spec.js validates the color against the theme
   if (typeof value === "string" && !kind) throw new Error(`${where}: "${value}" is not a column. Columns: ${Object.keys(columns).join(", ")}`);
   return toValue(value);
 }
@@ -180,6 +249,15 @@ function infoEntry(pair) {
   if (value === null || value === undefined || (typeof value === "number" && Number.isNaN(value))) return [key, null];
   if (!["string", "number", "boolean"].includes(typeof value)) throw new Error(`info(): the value of "${key}" must be a string, a number, a boolean or null. Format other values as a string`);
   return [key, toValue(value)];
+}
+
+// A binned color scale: breaks that increase, colors (a list) of one per class, and no mid.
+function checkClasses(scale, where) {
+  if (scale.breaks.some((v, i) => i && v <= scale.breaks[i - 1])) throw new Error(`${where}: breaks must increase`);
+  if (scale.mid !== undefined) throw new Error(`${where}: mid does not apply with breaks`);
+  if (scale.values !== undefined && (!Array.isArray(scale.values) || scale.values.length !== scale.breaks.length)) {
+    throw new Error(`${where}: with breaks, values must be a list of one color per break (class)`);
+  }
 }
 
 function needColumn(table, col, where) {

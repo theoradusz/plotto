@@ -411,6 +411,607 @@
           }
         ]
       ]
+    },
+    {
+      "name": "breaks and labels, dodge and direct labels",
+      "calls": [
+        [
+          "plot",
+          [],
+          {
+            "x": "v",
+            "y": "g",
+            "color": "h"
+          }
+        ],
+        [
+          "segment",
+          [],
+          {
+            "x": "t",
+            "xend": "n",
+            "yend": "g",
+            "position": "dodge"
+          }
+        ],
+        [
+          "point",
+          [],
+          {
+            "position": "dodge",
+            "size": 3
+          }
+        ],
+        [
+          "errorbar",
+          [],
+          {
+            "x": "g",
+            "ymin": "t",
+            "ymax": "n",
+            "position": "overlay"
+          }
+        ],
+        [
+          "x",
+          [],
+          {
+            "type": "log",
+            "breaks": [
+              1,
+              1.5,
+              2.25,
+              12345.678
+            ],
+            "labels": [
+              "one",
+              "1.5",
+              "2.25",
+              "max"
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "direct labels",
+      "calls": [
+        [
+          "plot",
+          [],
+          {
+            "x": "t",
+            "y": "v",
+            "color": "g"
+          }
+        ],
+        [
+          "line",
+          [],
+          {
+            "direct": true
+          }
+        ],
+        [
+          "y",
+          [],
+          {
+            "breaks": [
+              0,
+              10
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "polygons, fill scale with breaks, geo",
+      "calls": [
+        [
+          "plot",
+          [],
+          {
+            "x": "t",
+            "y": "v",
+            "color": "g"
+          }
+        ],
+        [
+          "polygon",
+          [],
+          {
+            "data": {
+              "type": "FeatureCollection",
+              "features": [
+                {
+                  "type": "Feature",
+                  "properties": {
+                    "name": "A",
+                    "hh": 10
+                  },
+                  "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                      [
+                        [
+                          135,
+                          35
+                        ],
+                        [
+                          136,
+                          35
+                        ],
+                        [
+                          136,
+                          36
+                        ],
+                        [
+                          135,
+                          36
+                        ],
+                        [
+                          135,
+                          35
+                        ]
+                      ],
+                      [
+                        [
+                          135.25,
+                          35.25
+                        ],
+                        [
+                          135.75,
+                          35.25
+                        ],
+                        [
+                          135.75,
+                          35.75
+                        ],
+                        [
+                          135.25,
+                          35.75
+                        ],
+                        [
+                          135.25,
+                          35.25
+                        ]
+                      ]
+                    ]
+                  }
+                },
+                {
+                  "type": "Feature",
+                  "properties": {
+                    "name": "B",
+                    "hh": 2000.5
+                  },
+                  "geometry": {
+                    "type": "MultiPolygon",
+                    "coordinates": [
+                      [
+                        [
+                          [
+                            136,
+                            35
+                          ],
+                          [
+                            137,
+                            35
+                          ],
+                          [
+                            137,
+                            36
+                          ],
+                          [
+                            136,
+                            36
+                          ],
+                          [
+                            136,
+                            35
+                          ]
+                        ]
+                      ],
+                      [
+                        [
+                          [
+                            137.2,
+                            35.2
+                          ],
+                          [
+                            137.5,
+                            35.2
+                          ],
+                          [
+                            137.5,
+                            35.5
+                          ],
+                          [
+                            137.2,
+                            35.5
+                          ],
+                          [
+                            137.2,
+                            35.2
+                          ]
+                        ]
+                      ]
+                    ]
+                  }
+                },
+                {
+                  "type": "Feature",
+                  "properties": {
+                    "name": "C",
+                    "hh": null
+                  },
+                  "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                      [
+                        [
+                          135,
+                          36
+                        ],
+                        [
+                          136.123456789,
+                          36
+                        ],
+                        [
+                          136.123456789,
+                          37.123456789
+                        ],
+                        [
+                          135,
+                          37.123456789
+                        ],
+                        [
+                          135,
+                          36
+                        ]
+                      ]
+                    ]
+                  }
+                }
+              ]
+            },
+            "fill": "hh",
+            "tooltip": "name",
+            "size": 0.8
+          }
+        ],
+        [
+          "polygon",
+          [],
+          {
+            "data": {
+              "type": "FeatureCollection",
+              "features": [
+                {
+                  "type": "Feature",
+                  "properties": {
+                    "name": "A",
+                    "hh": 10
+                  },
+                  "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                      [
+                        [
+                          135,
+                          35
+                        ],
+                        [
+                          136,
+                          35
+                        ],
+                        [
+                          136,
+                          36
+                        ],
+                        [
+                          135,
+                          36
+                        ],
+                        [
+                          135,
+                          35
+                        ]
+                      ],
+                      [
+                        [
+                          135.25,
+                          35.25
+                        ],
+                        [
+                          135.75,
+                          35.25
+                        ],
+                        [
+                          135.75,
+                          35.75
+                        ],
+                        [
+                          135.25,
+                          35.75
+                        ],
+                        [
+                          135.25,
+                          35.25
+                        ]
+                      ]
+                    ]
+                  }
+                },
+                {
+                  "type": "Feature",
+                  "properties": {
+                    "name": "B",
+                    "hh": 2000.5
+                  },
+                  "geometry": {
+                    "type": "MultiPolygon",
+                    "coordinates": [
+                      [
+                        [
+                          [
+                            136,
+                            35
+                          ],
+                          [
+                            137,
+                            35
+                          ],
+                          [
+                            137,
+                            36
+                          ],
+                          [
+                            136,
+                            36
+                          ],
+                          [
+                            136,
+                            35
+                          ]
+                        ]
+                      ],
+                      [
+                        [
+                          [
+                            137.2,
+                            35.2
+                          ],
+                          [
+                            137.5,
+                            35.2
+                          ],
+                          [
+                            137.5,
+                            35.5
+                          ],
+                          [
+                            137.2,
+                            35.5
+                          ],
+                          [
+                            137.2,
+                            35.2
+                          ]
+                        ]
+                      ]
+                    ]
+                  }
+                },
+                {
+                  "type": "Feature",
+                  "properties": {
+                    "name": "C",
+                    "hh": null
+                  },
+                  "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                      [
+                        [
+                          135,
+                          36
+                        ],
+                        [
+                          136.123456789,
+                          36
+                        ],
+                        [
+                          136.123456789,
+                          37.123456789
+                        ],
+                        [
+                          135,
+                          37.123456789
+                        ],
+                        [
+                          135,
+                          36
+                        ]
+                      ]
+                    ]
+                  }
+                }
+              ]
+            },
+            "fill": "#DDDDDD",
+            "color": "gray"
+          }
+        ],
+        [
+          "point",
+          [],
+          {}
+        ],
+        [
+          "fill",
+          [],
+          {
+            "breaks": [
+              0,
+              50,
+              1000
+            ],
+            "labels": [
+              "under 50",
+              "50 to 999",
+              "1,000 or more"
+            ],
+            "values": [
+              "yellow",
+              "orange",
+              "red"
+            ]
+          }
+        ],
+        [
+          "color",
+          [],
+          {
+            "breaks": [
+              -1,
+              0,
+              1
+            ],
+            "scheme": "aiaka",
+            "clamp": true
+          }
+        ],
+        [
+          "labels",
+          [],
+          {
+            "fill": "households"
+          }
+        ],
+        [
+          "coord",
+          [
+            "geo"
+          ],
+          {}
+        ]
+      ]
+    },
+    {
+      "name": "insets, scale bar, north arrow and repel",
+      "calls": [
+        [
+          "plot",
+          [],
+          {
+            "x": "t",
+            "y": "v"
+          }
+        ],
+        [
+          "point",
+          [],
+          {}
+        ],
+        [
+          "text",
+          [],
+          {
+            "label": "g",
+            "repel": true,
+            "size": 11
+          }
+        ],
+        [
+          "coord",
+          [
+            "geo"
+          ],
+          {
+            "scalebar": true,
+            "north": "top-left"
+          }
+        ],
+        [
+          "inset",
+          [],
+          {
+            "x": [
+              127,
+              128.5
+            ],
+            "y": [
+              25.8,
+              26.8
+            ],
+            "at": [
+              0.02,
+              0.6,
+              0.3,
+              0.987654321
+            ]
+          }
+        ],
+        [
+          "inset",
+          [],
+          {
+            "x": [
+              139.123456789,
+              142
+            ],
+            "y": [
+              26,
+              27.5
+            ],
+            "at": [
+              0.7,
+              0,
+              1,
+              0.3
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "raster",
+      "calls": [
+        [
+          "plot",
+          [],
+          {
+            "x": "t",
+            "y": "v"
+          }
+        ],
+        [
+          "raster",
+          [],
+          {
+            "fill": "n",
+            "alpha": 0.8
+          }
+        ],
+        [
+          "fill",
+          [],
+          {
+            "breaks": [
+              3.5,
+              4.5,
+              5
+            ],
+            "labels": [
+              "4",
+              "5-",
+              "5+"
+            ],
+            "scheme": "yuhi"
+          }
+        ]
+      ]
     }
   ]
 }

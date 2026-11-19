@@ -2,11 +2,16 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { test } from "node:test";
+import { Resvg } from "@resvg/resvg-js";
 import { JSDOM } from "jsdom";
 import { plot } from "../src/builder.js";
-import { figure } from "../src/figure.js";
+import { drawPanels, figure } from "../src/figure.js";
+import { pick } from "../src/hover.js";
+import { placeLabels } from "../src/repel.js";
 import { slideFigure } from "../src/interact.js";
 import { renderSVG } from "../src/render.mjs";
+import { equalize, geoAspect, ticks } from "../src/scales.js";
+import { textWidth } from "../src/text.js";
 import { FORMATS, STYLES } from "../src/theme.js";
 
 const { document } = new JSDOM("").window;
@@ -335,6 +340,302 @@ test("a long slide title gets smaller text to stay on one line; a screen title k
   assert.equal(sizes(screen)[0], screen.fonts.title);
   const longer = figure(base.line().labels({ title: `${title}, ${title}` }).theme("pastel", { format: "slide" }).spec(), { document });
   assert.ok(sizes(longer).length > 1 && sizes(longer)[0] === longer.fonts.title, "a title that wraps keeps its size");
+});
+
+// --- captions, breaks, dodge, direct labels -------------------------------------------------
+
+const CAPTION = "Dot: value; line: 90% interval. Earthquakes per row, development/test: all earthquakes 120/31, recorded 0 64/12, recorded 1 to 999 30/9, recorded 1,000 to 99,999 22/8, recorded 100,000 or more 4/2.";
+
+test("a long caption wraps at the plot width and keeps its full text", () => {
+  const f = figure(base.line().labels({ caption: CAPTION }).spec(), { document, width: 700 });
+  const lines = f.layout.texts.filter((t) => t.attrs.class === "pt-caption");
+  assert.ok(lines.length >= 2, `caption lines: ${lines.length}`);
+  assert.equal(lines.map((t) => t.text).join(" "), CAPTION);
+  for (const t of lines) assert.ok(t.attrs.x + textWidth(t.text, f.fonts.tick, false, f.theme.metrics) <= f.W, t.text);
+  assert.ok(lines.every((t, i) => i === 0 || t.attrs.y > lines[i - 1].attrs.y), "lines go down");
+  const one = figure(base.line().labels({ caption: "Short" }).spec(), { document, width: 700 });
+  const drop = one.layout.panels[0].innerH - f.layout.panels[0].innerH;
+  assert.ok(Math.abs(drop - (lines.length - 1) * f.fonts.tick * 1.3) < 1, `panels shrink by the extra lines: ${drop}`);
+});
+
+test("breaks set the ticks, and labels name them", () => {
+  const t = ticks("linear", [0, 12], 5, { breaks: [1, 1.5, 10], labels: ["one", "one and a half", "ten"] });
+  assert.deepEqual(t.major, [1, 1.5, 10]);
+  assert.deepEqual(t.major.map(t.format), ["one", "one and a half", "ten"]);
+  assert.deepEqual(t.minor, []);
+  assert.deepEqual(ticks("log", [0.9, 30], 5).major, [1, 2, 5, 10, 20], "fewer than 3 powers of ten: 1-2-5 ticks");
+  assert.deepEqual(ticks("log", [0.5, 2000], 5).major, [1, 10, 100, 1000]);
+  const svg = renderSVG(base.line().x({ type: "log", breaks: [1, 1.5, 2, 3, 5, 10] }).spec());
+  for (const v of ["1.5", "3"]) assert.match(svg, new RegExp(`>${v}</text>`));
+  // Observable Plot thins the labels of a log axis with many ticks (it blanked 5 here): every break keeps its label.
+  const wide = [0.97, 1.6, 3.3, 10.4, 1.05, 11].map((v, i) => ({ v, g: `p${i % 2}`, r: `recorded ${i % 3} to 100,000 or more` }));
+  const logSvg = renderSVG(plot(wide, { x: "v", y: "r" }).point().facet("g").x({ type: "log", limits: [0.89, 11.75], breaks: [1, 1.5, 2, 3, 5, 10] }).theme("paper", { width: 1000, height: 440 }).spec());
+  for (const label of logSvg.matchAll(/<g aria-label="x-axis tick label".*?<\/g>/gs)) assert.deepEqual([...label[0].matchAll(/>([^<]*)<\/text>/g)].map((m) => m[1]), ["1", "1.5", "2", "3", "5", "10"]);
+  assert.throws(() => base.x({ labels: ["a"] }), /labels need breaks/);
+  assert.throws(() => base.x({ breaks: [1, 2], labels: ["a"] }), /labels must have one entry per break/);
+  assert.throws(() => base.x({ breaks: 5 }), /breaks must be a list/);
+  assert.throws(() => renderSVG(plot(rows, { x: "g", y: "v" }).bar().x({ breaks: [1] }).spec()), /breaks apply to number, log and time axes/);
+});
+
+const forest = [];
+for (const [r, row] of ["small", "medium", "large"].entries()) {
+  for (const [m, model] of ["severity", "reference"].entries()) forest.push({ row, model, v: 1 + r + m, lo: 0.5 + r, hi: 2 + r + m });
+}
+const forestPlot = (o = {}) =>
+  plot(forest, { x: "v", y: "row", color: "model" }).segment({ x: "lo", xend: "hi", yend: "row", position: "dodge", ...o }).point({ position: "dodge", ...o });
+
+// The center of each dot in panel px, in data row order.
+function dots(state) {
+  const g = state.panels[0].g.querySelector('g[aria-label="dot"]');
+  const [dx, dy] = (g.querySelector("g[transform]")?.getAttribute("transform").match(/-?[\d.]+/g) ?? [0, 0]).map(Number); // band centering
+  return [...g.querySelectorAll("circle")].map((c) => [+c.getAttribute("cx") + dx, +c.getAttribute("cy") + dy]);
+}
+
+test("dodge puts the colors side by side in each category of y, the same in every row", () => {
+  const f = figure(forestPlot().spec(), { document });
+  const bw = (f.layout.panels[0].innerH / (3 + 0.2)) * 0.8;
+  const d = dots(f);
+  // The legend order is reference, severity: reference takes the upper slot of each row.
+  for (let r = 0; r < 3; r++) assert.ok(Math.abs(d[2 * r][1] - d[2 * r + 1][1] - bw / 2) < 0.01, `row ${r}: ${d[2 * r][1]} ${d[2 * r + 1][1]}`);
+  const links = [...f.panels[0].g.querySelectorAll('g[aria-label="link"] path')].map((p) => +p.getAttribute("d").match(/-?[\d.]+/g)[1]);
+  const ly = f.panels[0].g.querySelector('g[aria-label="link"] g[transform], g[aria-label="link"][transform]')?.getAttribute("transform").match(/-?[\d.]+/g).map(Number)[1] ?? 0;
+  links.forEach((y, i) => assert.ok(Math.abs(y + ly - d[i][1]) < 0.01, "each segment is at the height of its point"));
+  const hit = pick(f, 0, d[3][0], d[3][1]);
+  assert.equal(hit.header, "reference");
+  const hidden = dots(figure(forestPlot().spec(), { document, hidden: new Set(["reference"]) }));
+  assert.ok(Math.abs(hidden[0][1] - d[0][1]) < 0.01, "a hidden color keeps its slot");
+});
+
+test("dodge needs a category axis and a category color; errorbar dodges on x only", () => {
+  assert.throws(() => base.point({ position: "stack" }), /position must be overlay or dodge/);
+  assert.throws(() => renderSVG(base.point({ position: "dodge" }).spec()), /dodge needs a category x or y axis/);
+  assert.throws(() => renderSVG(plot(rows, { x: "g", y: "v", color: "t" }).point({ position: "dodge" }).spec()), /dodge needs color mapped to a category column/);
+  assert.throws(() => renderSVG(plot(rows, { x: "t", ymin: "v", color: "g" }).errorbar({ ymax: 2, position: "dodge" }).spec()), /dodge needs a category x axis/);
+  const svg = renderSVG(plot(rows.filter((r) => r.t < 3), { x: "k", ymin: "v", color: "g" }).errorbar({ ymax: 2, position: "dodge" }).spec());
+  assert.match(svg, /aria-label="rule"/);
+});
+
+test("direct labels name each line at its end, apart from each other", () => {
+  const ends = [];
+  for (const g of ["first model", "second model", "a third, much longer model name"]) for (let t = 0; t <= 10; t++) ends.push({ t, v: t + (g === "first model" ? 0 : 0.02), g });
+  const f = figure(plot(ends, { x: "t", y: "v", color: "g" }).line({ direct: true }).spec(), { document });
+  const texts = [...f.panels[0].g.querySelectorAll('g[aria-label="text"] text')];
+  assert.equal(texts.length, 3);
+  const ys = texts.map((t) => +t.getAttribute("transform").match(/-?[\d.]+/g)[1]).sort((a, b) => a - b);
+  for (let i = 1; i < ys.length; i++) assert.ok(ys[i] - ys[i - 1] >= f.fonts.tick * 1.1, `labels apart: ${ys}`);
+  assert.ok(f.layout.panels[0].mr > 0);
+  const short = figure(plot(ends.map((r) => ({ ...r, g: r.g.slice(0, 3) })), { x: "t", y: "v", color: "g" }).line({ direct: true }).spec(), { document });
+  assert.ok(short.layout.panels[0].mr < f.layout.panels[0].mr, "the margin follows the longest name");
+  assert.equal(figure(base.line().spec(), { document }).layout.panels[0].mr, 0);
+});
+
+// --- maps: polygons, fill scale, binned scale, coord("geo") ----------------------------------
+
+const square = (x, y, s) => [[x, y], [x + s, y], [x + s, y + s], [x, y + s], [x, y]];
+const districts = {
+  type: "FeatureCollection",
+  features: [
+    { type: "Feature", properties: { name: "A", hh: 10 }, geometry: { type: "Polygon", coordinates: [square(135, 35, 1), square(135.25, 35.25, 0.5)] } },
+    { type: "Feature", properties: { name: "B", hh: 2000 }, geometry: { type: "MultiPolygon", coordinates: [[square(136, 35, 1)], [square(137.2, 35.2, 0.3)]] } },
+    { type: "Feature", properties: { name: "C", hh: null }, geometry: { type: "Polygon", coordinates: [square(135, 36, 1.123456789)] } },
+  ],
+};
+const towns = [
+  { lon: 135.6, lat: 36.4, size: "small" },
+  { lon: 136.5, lat: 35.5, size: "large" },
+];
+const HH_BREAKS = [0, 50, 1000, 10000, 100000];
+
+test("a FeatureCollection gives a geometry column, and polygon() draws it with holes", () => {
+  const spec = plot(districts).polygon({ fill: "hh", tooltip: "name" }).spec();
+  assert.equal(spec.layers[0].mapping.geometry, "geometry", "the geometry column is the default");
+  const geometry = spec.data[0].columns.geometry;
+  assert.equal(geometry.type, "geometry");
+  assert.equal(geometry.values[2].coordinates[0][1][0], 136.12346, "coordinates keep 5 decimals");
+  const f = figure(spec, { document });
+  const g = f.panels[0].g.querySelector('g[aria-label="geo"]');
+  assert.equal(g.getAttribute("fill-rule"), "evenodd");
+  assert.equal(g.querySelectorAll("path").length, 3);
+  assert.deepEqual(f.home[0].x, [134.875, 137.625], "the domain covers every polygon (135 to 137.5), with 5% space");
+  const at = (lon, lat) => [f.panels[0].plot.scale("x").apply(lon), f.panels[0].plot.scale("y").apply(lat)];
+  assert.equal(pick(f, 0, ...at(135.1, 35.1)).header, "A");
+  assert.equal(pick(f, 0, ...at(135.5, 35.5)), null, "a hole is not part of the polygon");
+  assert.equal(pick(f, 0, ...at(137.3, 35.3)).header, "B", "every part of a multipolygon");
+  assert.match(pick(f, 0, ...at(135.1, 35.1)).rows[0].value, /^10$/);
+});
+
+test("polygon checks its geometry", () => {
+  const line = { type: "FeatureCollection", features: [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [[0, 0], [1, 1]] } }] };
+  assert.throws(() => renderSVG(plot(line).polygon().spec()), /geometry must be Polygon or MultiPolygon, not LineString/);
+  assert.throws(() => renderSVG(plot(districts).polygon({ fill: "geometry" }).spec()), /is a geometry column; use it as geometry/);
+  assert.throws(() => renderSVG(plot(districts).polygon({ geometry: "name" }).spec()), /geometry must be a geometry column/);
+  const outline = renderSVG(plot(districts).polygon({ color: "gray", size: 1 }).spec());
+  assert.match(outline, /fill="none"/, "without fill: outlines only");
+});
+
+test("fill and color are two scales with two legends; only the color legend toggles", () => {
+  const p = plot(districts).polygon({ fill: "hh" }).point({ data: towns, x: "lon", y: "lat", color: "size" }).fill({ breaks: HH_BREAKS });
+  const f = figure(p.spec(), { document });
+  assert.equal(f.legend.kind, "stack");
+  assert.deepEqual(f.legend.parts.map((part) => part.model.kind), ["swatches", "steps"]);
+  assert.deepEqual(f.legend.items.map((it) => it.value), ["large", "small"], "the items are the color keys");
+  assert.equal(f.svg.querySelectorAll(".pt-key").length, 2);
+  assert.ok(f.legend.parts[1].y >= f.legend.parts[0].model.height, "the second legend is below the first");
+  const constant = plot(districts).polygon({ fill: "#DDDDDD" }).spec();
+  assert.match(renderSVG(constant), /fill="#DDDDDD"/);
+  assert.throws(() => renderSVG(plot(districts).polygon({ fill: "nocolor" }).spec()), /not a column or a color/);
+});
+
+test("breaks make a binned scale: classes closed on the left, colors set by the breaks", () => {
+  const f = figure(plot(districts).polygon({ fill: "hh" }).fill({ breaks: HH_BREAKS, scheme: "matcha" }).spec(), { document });
+  const { fill } = f;
+  assert.equal(fill.kind, "binned");
+  assert.equal(fill.colors.length, 5);
+  assert.equal(fill.apply(10), fill.colors[0]);
+  assert.equal(fill.apply(50), fill.colors[1], "a value at a break is in the class above");
+  assert.equal(fill.apply(250000), fill.colors[4], "the last class is open");
+  assert.equal(fill.apply(-1), f.theme.muted);
+  assert.equal(fill.apply(null), f.theme.muted);
+  const steps = f.legend;
+  assert.equal(steps.kind, "steps");
+  assert.deepEqual(steps.texts, ["0", "50", "1,000", "10,000", "100,000"]);
+  assert.equal(f.svg.querySelectorAll(".pt-legend rect").length, 5);
+  const named = figure(plot(districts).polygon({ fill: "hh" }).fill({ breaks: [0, 50], labels: ["under 50", "50 or more"], values: ["yellow", "red"] }).spec(), { document });
+  assert.deepEqual(named.legend.texts, ["under 50", "50 or more"]);
+  assert.equal(named.fill.apply(60), named.theme.colors.red);
+  const clamped = figure(plot(districts).polygon({ fill: "hh" }).fill({ breaks: [20, 50], clamp: true }).spec(), { document });
+  assert.equal(clamped.fill.apply(10), clamped.fill.colors[0]);
+  assert.throws(() => base.color({ breaks: [1, 1] }), /breaks must increase/);
+  assert.throws(() => base.color({ breaks: [0, 1], mid: 0.5 }), /mid does not apply with breaks/);
+  assert.throws(() => base.color({ breaks: [0, 1], values: ["red"] }), /one color per break/);
+  assert.throws(() => renderSVG(base.line().color({ breaks: [0, 1] }).spec()), /breaks apply to a number or time column/);
+});
+
+test('coord("geo") gives equal distance per px in x and y, also after a zoom', () => {
+  const p = plot(districts).polygon({ fill: "hh" }).point({ data: towns, x: "lon", y: "lat" }).coord("geo");
+  const f = figure(p.spec(), { document });
+  const box = f.layout.panels[0];
+  assert.ok(Math.abs(box.innerH / box.innerW - geoAspect(f.home[0])) < 0.01, "the panel has the shape of the map");
+  const kmPerPx = (d, b) => [((d.x[1] - d.x[0]) * Math.cos((((d.y[0] + d.y[1]) / 2) * Math.PI) / 180)) / b.innerW, (d.y[1] - d.y[0]) / b.innerH];
+  const zoomed = f.home.map((d) => ({ ...d, x: [135.2, 135.4] })); // a narrow box: the drawn y grows
+  const z = figure(p.spec(), { document, domains: zoomed });
+  const drawn = equalize(z.domains[0], box.innerW, box.innerH);
+  const [ex, ey] = kmPerPx(drawn, box);
+  assert.ok(Math.abs(ex - ey) / ey < 1e-9, `equal scale: ${ex} ${ey}`);
+  assert.deepEqual(z.domains[0], zoomed[0], "the stored domain does not change");
+  const svg = renderSVG(p.spec());
+  assert.match(svg, />136.0°E</);
+  assert.match(svg, />36.0°N</);
+  assert.equal(f.ns.labels.x, null, "no axis titles by default");
+  assert.throws(() => renderSVG(p.facet("hh", { free: "y" }).spec()), /facet free must be "both" or unset/);
+  assert.throws(() => renderSVG(plot(rows, { x: "t", y: "v" }).line().x({ type: "log" }).coord("geo").spec()), /x and y must be number axes/);
+  assert.throws(() => base.coord("mercator"), /unknown type "mercator"/);
+});
+
+// --- insets, scale bar, north arrow, repel ---------------------------------------------------
+
+const islands = [
+  { lon: 135.2, lat: 35.2, name: "main 1", panel: "a" },
+  { lon: 135.8, lat: 35.7, name: "main 2", panel: "a" },
+  { lon: 135.4, lat: 35.5, name: "main 3", panel: "b" },
+  { lon: 127.7, lat: 26.2, name: "far", panel: "a" },
+];
+const islandMap = () => plot(islands, { x: "lon", y: "lat" }).point().x({ limits: [135, 136] }).y({ limits: [35, 36] }).coord("geo");
+
+test("an inset shows its own extent in each panel, keeps it on zoom, and stays after a redraw", () => {
+  const p = islandMap().inset({ x: [127, 128.5], y: [25.8, 26.8], at: [0.02, 0.62, 0.32, 0.98] });
+  const f = figure(p.spec(), { document });
+  assert.equal(f.mainCount, 1);
+  assert.equal(f.panels.length, 2);
+  const [main, inset] = f.layout.panels;
+  assert.ok(inset.inset && Math.abs(inset.x - (main.x + main.ml + 0.02 * main.innerW)) < 1e-9 && Math.abs(inset.innerW - 0.3 * main.innerW) < 1e-9);
+  const circles = (k) => f.panels[k].g.querySelectorAll('g[aria-label="dot"] circle').length;
+  assert.equal(circles(1), 4, "the inset draws every point of its panel; the far one is inside its extent");
+  const sx = f.panels[1].plot.scale("x");
+  const sy = f.panels[1].plot.scale("y");
+  assert.equal(pick(f, 1, sx.apply(127.7), sy.apply(26.2)).k, 3, "hover works in the inset");
+  assert.deepEqual(f.home[1], { x: [127, 128.5], y: [25.8, 26.8] });
+  f.hidden = new Set(["x"]);
+  drawPanels(f);
+  assert.equal(f.panels.length, 2, "a redraw (legend click, zoom) draws the inset again");
+  assert.equal(f.svg.querySelectorAll(".pt-panel").length, 2);
+  const faceted = figure(p.facet("panel").spec(), { document });
+  assert.equal(faceted.panels.length, 4, "two panels, each with its inset");
+  assert.throws(() => base.inset({ x: [1, 0], y: [0, 1], at: [0, 0, 0.5, 0.5] }), /x must be \[low, high\]/);
+  assert.throws(() => base.inset({ x: [0, 1], y: [0, 1], at: [0, 0, 1.5, 0.5] }), /at must be \[left, bottom, right, top\]/);
+  assert.throws(() => renderSVG(plot(rows, { x: "g", y: "v" }).bar().inset({ x: [0, 1], y: [0, 1], at: [0, 0, 0.5, 0.5] }).spec()), /x and y must be number or time axes/);
+});
+
+test("the scale bar has a round length that matches the map scale; the north arrow points up", () => {
+  const f = figure(islandMap().coord("geo", { scalebar: true, north: true }).spec(), { document });
+  assert.deepEqual([f.ns.coord.scalebar, f.ns.coord.north], ["bottom-left", "top-right"]);
+  const bar = f.svg.querySelector(".pt-scalebar");
+  const [km, px] = [+bar.getAttribute("data-km"), +bar.getAttribute("data-px")];
+  const box = f.layout.panels[0];
+  const drawn = equalize(f.domains[0], box.innerW, box.innerH);
+  const kmPerPx = ((drawn.x[1] - drawn.x[0]) * 111.32 * Math.cos((((drawn.y[0] + drawn.y[1]) / 2) * Math.PI) / 180)) / box.innerW;
+  assert.ok(Math.abs(px * kmPerPx - km) < 1e-6, `${px} px is ${km} km`);
+  assert.ok([1, 2, 5].includes(km / 10 ** Math.floor(Math.log10(km))), `a round length: ${km}`);
+  assert.ok(px <= box.innerW * 0.2 && px > box.innerW * 0.07);
+  assert.match(bar.textContent, /^\d[\d,]* km$/);
+  assert.equal(f.svg.querySelector(".pt-north text").textContent, "N");
+  assert.equal(figure(islandMap().spec(), { document }).svg.querySelector(".pt-scalebar"), null);
+  assert.throws(() => base.coord("geo", { scalebar: "middle" }), /unknown scalebar "middle"/);
+});
+
+test("repel places dense labels without overlaps and clear of the points", () => {
+  const anchors = Array.from({ length: 30 }, (_, i) => ({ x: 300 + (i % 6) * 6, y: 200 + Math.floor(i / 6) * 5 }));
+  const sizes = anchors.map(() => ({ w: 40, h: 12 }));
+  const points = anchors.map((a) => ({ ...a, r: 3 }));
+  const spots = placeLabels(anchors, sizes, points, { x0: 0, y0: 0, x1: 700, y1: 500 }, 11);
+  const boxes = spots.map((s, i) => ({ x0: s.x - 20, x1: s.x + 20, y0: s.y - 6, y1: s.y + 6, i }));
+  for (const a of boxes) for (const b of boxes) if (a.i < b.i) assert.ok(a.x1 <= b.x0 || b.x1 <= a.x0 || a.y1 <= b.y0 || b.y1 <= a.y0, `labels ${a.i} and ${b.i} overlap`);
+  for (const b of boxes) for (const pt of points) assert.ok(Math.hypot(pt.x - Math.max(b.x0, Math.min(b.x1, pt.x)), pt.y - Math.max(b.y0, Math.min(b.y1, pt.y))) >= pt.r - 1e-9, "a label covers a point");
+  assert.ok(spots.some((s) => s.leader), "far labels get a leader line");
+  assert.equal(placeLabels([{ x: 50, y: 50 }], [{ w: 20, h: 10 }], [], { x0: 0, y0: 0, x1: 100, y1: 100 }, 10)[0].x, 50 + 10 + 4, "a free label sits right of its anchor");
+  const blocked = placeLabels([{ x: 50, y: 50 }], [{ w: 20, h: 10 }], [], { x0: 0, y0: 0, x1: 100, y1: 100 }, 10, [{ x0: 52, y0: 40, x1: 100, y1: 60 }])[0];
+  assert.ok(blocked.x + 10 <= 52 || blocked.y + 5 <= 40 || blocked.y - 5 >= 60, "a label keeps clear of a blocked box (an inset, the scale bar)");
+  const svg = renderSVG(plot(islands, { x: "lon", y: "lat" }).point().text({ label: "name", repel: true }).spec());
+  assert.match(svg, />main 1</);
+});
+
+// --- raster ------------------------------------------------------------------------------------
+
+test("a raster draws one image of its cells, with the fill colors, through resvg", () => {
+  const cells = [];
+  for (let j = 0; j < 2; j++) for (let i = 0; i < 3; i++) if (!(i === 2 && j === 1)) cells.push({ lon: 135 + i * 0.5, lat: 35 + j * 0.5, v: i });
+  const spec = plot(cells, { x: "lon", y: "lat" }).raster({ fill: "v" }).fill({ breaks: [0, 1, 2], values: ["#FF0000", "#00FF00", "#0000FF"] }).spec();
+  const f = figure(spec, { document });
+  assert.equal(f.svg.querySelectorAll('svg[aria-label="raster"] image').length, 1);
+  assert.deepEqual(f.home[0].x, [134.675, 136.325], "the domain covers the cell edges (134.75 to 136.25), with 5% space");
+  const png = new Resvg(f.svg.outerHTML).render();
+  const box = f.layout.panels[0];
+  const pixel = (lon, lat) => {
+    const [x, y] = [Math.round(box.x + f.panels[0].plot.scale("x").apply(lon)), Math.round(box.y + f.panels[0].plot.scale("y").apply(lat))];
+    return [...png.pixels.subarray((y * png.width + x) * 4, (y * png.width + x) * 4 + 3)];
+  };
+  assert.deepEqual(pixel(135, 35), [255, 0, 0]);
+  assert.deepEqual(pixel(135.5, 35.5), [0, 255, 0]);
+  assert.deepEqual(pixel(136, 35), [0, 0, 255]);
+  assert.ok(pixel(136, 35.5).every((v) => v > 200), "a missing cell shows the background (and the grid lines)");
+  const sx = f.panels[0].plot.scale("x");
+  const sy = f.panels[0].plot.scale("y");
+  const hit = pick(f, 0, sx.apply(135.52), sy.apply(35.48));
+  assert.match(hit.header, /^v {2}1$/);
+});
+
+test("a raster finds its grid in values with 6 significant digits, and refuses cells off the grid", () => {
+  const mesh = [];
+  for (let j = 0; j < 3; j++) for (let i = 0; i < 300; i++) mesh.push({ lon: 139.00625 + i * 0.0125, lat: 35.004167 + j / 120, v: (i + j) % 7 });
+  const f = figure(plot(mesh, { x: "lon", y: "lat" }).raster({ fill: "v" }).spec(), { document });
+  const { x, y } = f.grid.panels[0].views[0].grid;
+  assert.equal(x.n, 300);
+  assert.equal(y.n, 3);
+  assert.deepEqual(x.index.slice(0, 300), Array.from({ length: 300 }, (_, i) => i), "each cell in its own column");
+  assert.ok(Math.abs(x.step - 0.0125) < 1e-5, `step ${x.step}`); // the rounding of the first and last values limits it
+  const off = [...mesh.slice(0, 10), { lon: 139.00625 + 3.4 * 0.0125, lat: 35.004167, v: 1 }];
+  assert.throws(() => renderSVG(plot(off, { x: "lon", y: "lat" }).raster({ fill: "v" }).spec()), /raster\(\): x = [\d.]+ is not on a regular grid \(step/);
+  assert.throws(() => renderSVG(plot(mesh.slice(0, 20), { x: "lon", y: "lat" }).raster({ fill: "v" }).x({ type: "log" }).spec()), /x and y must be number or time axes/);
 });
 
 test("a method returns a new builder and keeps the old one", () => {

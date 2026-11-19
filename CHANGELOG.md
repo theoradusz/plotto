@@ -6,6 +6,30 @@ Write each change under "Unreleased". `scripts/release.sh` moves them to the new
 
 ## Unreleased
 
+### Added
+
+- `point`, `segment` and `errorbar` take `position="dodge"`: each color gets its own slot of the category band, on a category x or y (error bars: x). A color has the same slot in every category, panel and layer, so the intervals of one model always sit with its points.
+- `line(direct=True)` writes the name of each series at the end of its line, in its color, so a plot can do without a legend.
+- `x(breaks=, labels=)` and `y(breaks=, labels=)` set the ticks of a number, log or time axis and their text.
+- `polygon()` draws GeoJSON `Polygon` and `MultiPolygon` areas, with holes, for choropleths and outlines. The data can be a GeoDataFrame, a GeoJSON FeatureCollection or a column of GeoJSON geometries (new column type `geometry`).
+- A second color scale, `fill`, with `fill()` and its own legend: a map can color the areas by one column and the points by another.
+- `color(breaks=)` and `fill(breaks=)` make classes, for example households 0 / 50 / 1,000 / 10,000, with a stepped legend. `labels=` names the classes.
+- `coord("geo")`: map coordinates. x (longitude) and y (latitude) get the same distance per px, the panels take the shape of the map, and the ticks are in degrees.
+- `coord("geo", scalebar=True, north=True)` adds a scale bar and a north arrow, in a corner of each map panel.
+- `inset(x=, y=, at=)` draws a distant area (islands) at its own extent in a box of the panel. Zoom and pan leave it as it is.
+- `text(repel=True)` places labels clear of each other, of the points, of the insets and of the scale bar, with leader lines for labels that move far.
+- `raster(x=, y=, fill=)` draws a regular grid of cells (for example the 1 km intensity mesh of an earthquake) as one image, colored by the fill scale, under outlines and points.
+
+### Changed
+
+- A long caption wraps at the width of the plot, to 4 lines. It was cut at the right edge.
+- A log axis with fewer than three powers of ten in view has ticks at 1, 2 and 5 times each power. It showed only the powers of ten, for example only 1 and 10.
+
+### Fixed
+
+- A log axis shows the label of each tick. On a narrow panel, Observable Plot left some labels empty, for example 5.
+- A color ramp at the bottom has fewer ticks when their labels would touch.
+
 ## 0.6.0 – 2026-11-13
 
 ### Added

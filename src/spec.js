@@ -12,9 +12,18 @@ export function normalize(spec, overrides = {}) {
   const layers = spec.layers.map((l) => resolveLayer(l, spec.mapping ?? {}, tables, theme));
   if (!layers.length) throw new Error("plotto: the plot has no layers. Add one, for example .line() or .point()");
   const facet = resolveFacet(spec.facet);
-  const labels = { ...defaultLabels(layers), ...spec.labels };
+  const coord = spec.coord ?? null;
+  let scales = spec.scales ?? {};
+  let geoLabels = {};
+  if (coord?.type === "geo") {
+    // x is the longitude and y the latitude: tick labels in degrees, and no axis titles unless set.
+    if (facet && facet.free.x !== facet.free.y) throw new Error('coord("geo"): facet free must be "both" or unset, so that each panel keeps the same distance per px in x and y');
+    scales = { ...scales, x: { ...scales.x, degrees: "lon" }, y: { ...scales.y, degrees: "lat" } };
+    geoLabels = { x: null, y: null };
+  }
+  const labels = { ...defaultLabels(layers), ...geoLabels, ...spec.labels };
   const info = spec.info?.entries?.length ? { entries: spec.info.entries, position: spec.info.position ?? "right", set: !!spec.info.position } : null;
-  return { tables, layers, facet, scales: spec.scales ?? {}, labels, info, theme };
+  return { tables, layers, facet, scales, labels, info, coord, insets: spec.insets ?? [], theme };
 }
 
 function toTable({ columns }) {
@@ -36,10 +45,22 @@ function resolveLayer(layer, plotMapping, tables, theme) {
   }
   const missing = def.requires.filter((ch) => !channels[ch]);
   if (missing.length) throw new Error(`${layer.type}(): set ${missing.join(" and ")}, as a column name or a value`);
-  if (channels.color && "value" in channels.color) {
-    const color = colorOf(theme, channels.color.value);
-    if (!color) throw new Error(`${layer.type}(): "${channels.color.value}" is not a column or a color. Theme colors: ${colorTokens(theme).join(", ")}`);
-    channels.color = { value: color };
+  for (const ch of ["color", "fill"]) {
+    if (!channels[ch] || !("value" in channels[ch])) continue;
+    const color = colorOf(theme, channels[ch].value);
+    if (!color) throw new Error(`${layer.type}(): "${channels[ch].value}" is not a column or a color. Theme colors: ${colorTokens(theme).join(", ")}`);
+    channels[ch] = { value: color };
+  }
+  // Geometry columns go to the geometry channel only, and a polygon draws Polygon and MultiPolygon geometries.
+  for (const [ch, c] of Object.entries(channels)) {
+    const type = c.column && columns[c.column].type;
+    if ((type === "geometry") !== (ch === "geometry")) {
+      throw new Error(ch === "geometry" ? `${layer.type}(): geometry must be a geometry column (GeoJSON Polygon or MultiPolygon)` : `${layer.type}(): "${c.column}" is a geometry column; use it as geometry`);
+    }
+    if (ch === "geometry") {
+      const other = columns[c.column].values.find((g) => g && g.type !== "Polygon" && g.type !== "MultiPolygon");
+      if (other) throw new Error(`${layer.type}(): geometry must be Polygon or MultiPolygon, not ${other.type}`);
+    }
   }
   const options = {};
   for (const opt of def.options) if (layer.set?.[opt] !== undefined) options[opt] = layer.set[opt];
@@ -61,5 +82,5 @@ function defaultLabels(layers) {
   };
   const stat = layers.find((l) => l.type === "hist" || l.type === "density");
   const y = first(["y", "ymin", "yend"]) ?? (stat ? (stat.type === "density" || stat.options.density ? "density" : "count") : undefined);
-  return { x: first(["x", "xmin", "xend"]), y, color: first(["color"]) };
+  return { x: first(["x", "xmin", "xend"]), y, color: first(["color"]), fill: first(["fill"]) };
 }

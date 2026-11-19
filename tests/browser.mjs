@@ -19,12 +19,36 @@ for (const sensor of ["sensor A", "sensor B", "sensor C"]) {
 const spectra = [];
 for (let h = 0; h < 24; h++) for (let w = 220; w <= 420; w += 1.4) spectra.push({ wl: w, a: Math.exp(-(((w - 260) / 22) ** 2)) * (1 + h / 24), hour: h });
 
+const forest = [];
+for (const [r, row] of ["small", "medium", "large"].entries()) {
+  for (const [m, model] of ["severity", "reference"].entries()) forest.push({ row, model, v: 1 + r + m, lo: 0.5 + r, hi: 2 + r + m });
+}
+
+const square = (x, y, d) => [[x, y], [x + d, y], [x + d, y + d], [x, y + d], [x, y]];
+const districts = {
+  type: "FeatureCollection",
+  features: [
+    { type: "Feature", properties: { name: "A", hh: 10 }, geometry: { type: "Polygon", coordinates: [square(135, 35, 1), square(135.25, 35.25, 0.5)] } },
+    { type: "Feature", properties: { name: "B", hh: 2000 }, geometry: { type: "MultiPolygon", coordinates: [[square(136, 35, 1)], [square(137.2, 35.2, 0.3)]] } },
+  ],
+};
+
+const towns = [135.2, 135.25, 135.3, 135.22, 135.28, 135.7].map((lon, i) => ({ lon, lat: 35.4 + (i % 3) * 0.03, name: `town ${i + 1}` }));
+towns.push({ lon: 127.7, lat: 26.2, name: "far island" });
+
 const specs = [
   plot(rows, { x: "time", y: "v", color: "series" }).line().hline({ y: 0 }).facet("sensor", { free: "y" }).labels({ title: "Test" }).info({ site: "hayama", run: 15 }).spec(),
   plot(spectra, { x: "wl", y: "a", color: "hour", group: "hour" }).line().spec(),
   plot(rows.slice(0, 60), { x: "time", y: "v", color: "series" }).line().spec(),
+  plot(forest, { x: "v", y: "row", color: "model" }).segment({ x: "lo", xend: "hi", yend: "row", position: "dodge" }).point({ position: "dodge" }).x({ type: "log", breaks: [0.5, 1, 2, 5] }).spec(),
+  plot(rows.slice(0, 120), { x: "time", y: "v", color: "series" }).line({ direct: true }).labels({ caption: "A caption long enough to wrap: ".repeat(8) }).theme("pastel", { legend: "none" }).spec(),
+  plot(districts).polygon({ fill: "hh", tooltip: "name" }).point({ data: [{ lon: 135.1, lat: 35.9, k: "town" }], x: "lon", y: "lat", color: "k" }).fill({ breaks: [0, 50, 1000] }).coord("geo").spec(),
+  plot(towns, { x: "lon", y: "lat" }).point().text({ label: "name", repel: true }).x({ limits: [135, 136] }).y({ limits: [35, 36] }).inset({ x: [127, 128.5], y: [25.8, 26.8], at: [0.02, 0.6, 0.32, 0.98] }).coord("geo", { scalebar: true, north: true }).spec(),
 ];
-const modes = [true, true, false]; // plot 2 is static
+const cells = [];
+for (let i = 0; i < 4; i++) cells.push({ lon: 135 + i * 0.5, lat: 35, v: i % 2 });
+specs.push(plot(cells, { x: "lon", y: "lat" }).raster({ fill: "v" }).fill({ breaks: [0, 1], values: ["#FF0000", "#0000FF"] }).spec());
+const modes = [true, true, false, true, false, true, true, false]; // plots 2, 4 and 7 are static
 
 const dir = mkdtempSync(join(tmpdir(), "plotto-test-"));
 const js = (await bundle({ cdn: false })).replace(/<\/script/gi, "<\\/script");
@@ -208,6 +232,57 @@ try {
   await click(await b.evaluate("(() => { const r = shadow.querySelector('.pt-key').getBoundingClientRect(); return JSON.stringify([r.left + r.width / 2, r.top + r.height / 2]); })()").then(JSON.parse));
   check("a legend click in the shadow root hides a series", (await lines()) < shown, `${shown} → ${await lines()}`);
   check("render() returns the cleanup", await b.evaluate("typeof cleanup === 'function' && (cleanup(), true)"));
+
+  // A dodged point: the label is the one of the point under the pointer, in its slot.
+  await b.evaluate("document.getElementById('p3').scrollIntoView()");
+  const dot = JSON.parse(await b.evaluate("(() => { const r = document.querySelectorAll('#p3 g[aria-label=dot] circle')[1].getBoundingClientRect(); return JSON.stringify([r.left + r.width / 2, r.top + r.height / 2]); })()"));
+  await b.mouse("mouseMoved", dot[0] - 1, dot[1], { buttons: 0 });
+  await b.mouse("mouseMoved", ...dot, { buttons: 0 });
+  await sleep(150);
+  const dodgeTip = await b.evaluate("document.querySelector('#p3 .pt-tip').textContent");
+  check("hover on a dodged point shows that point", dodgeTip.includes("reference") && !dodgeTip.includes("severity"), dodgeTip);
+
+  // A map: hover on an area shows its name; a zoom box keeps the same distance per px in x and y.
+  await b.evaluate("document.getElementById('p5').scrollIntoView()");
+  const inA = JSON.parse(await b.evaluate("(() => { const st = ctl[5].state, p = st.panels[0], b = st.layout.panels[0], r = st.svg.getBoundingClientRect(), k = r.width / st.W; return JSON.stringify([r.left + (b.x + p.plot.scale('x').apply(135.1)) * k, r.top + (b.y + p.plot.scale('y').apply(35.1)) * k]); })()"));
+  await b.mouse("mouseMoved", inA[0] - 1, inA[1], { buttons: 0 });
+  await b.mouse("mouseMoved", ...inA, { buttons: 0 });
+  await sleep(150);
+  const mapTip = await b.evaluate("document.querySelector('#p5 .pt-tip').textContent");
+  check("hover on an area shows its tooltip and value", mapTip.startsWith("A") && mapTip.includes("10"), mapTip);
+  const p5 = JSON.parse(await b.evaluate("JSON.stringify(ctl[5].state.layout.panels[0])"));
+  await drag(5, [p5.x + p5.ml + 40, p5.y + 40], [p5.x + p5.ml + 140, p5.y + 60]);
+  const equal = JSON.parse(await b.evaluate(`(() => { const p = ctl[5].state.panels[0], b = ctl[5].state.layout.panels[0];
+    const [x0, x1] = p.plot.scale('x').domain, [y0, y1] = p.plot.scale('y').domain;
+    return JSON.stringify([((x1 - x0) * Math.cos((y0 + y1) / 2 * Math.PI / 180)) / b.innerW, (y1 - y0) / b.innerH, ctl[5].state.domains !== ctl[5].state.home]); })()`));
+  check("a zoom box on a map keeps the same distance per px in x and y", equal[2] && Math.abs(equal[0] - equal[1]) / equal[1] < 1e-9, JSON.stringify(equal));
+
+  // An inset: hover shows its points; a drag in it does not zoom.
+  await b.evaluate("document.getElementById('p6').scrollIntoView()");
+  const far = JSON.parse(await b.evaluate("(() => { const st = ctl[6].state, p = st.panels[1], b = st.layout.panels[1], r = st.svg.getBoundingClientRect(), k = r.width / st.W; return JSON.stringify([r.left + (b.x + p.plot.scale('x').apply(127.7)) * k, r.top + (b.y + p.plot.scale('y').apply(26.2)) * k]); })()"));
+  await b.mouse("mouseMoved", far[0] - 1, far[1], { buttons: 0 });
+  await b.mouse("mouseMoved", ...far, { buttons: 0 });
+  await sleep(150);
+  const insetTip = await b.evaluate("document.querySelector('#p6 .pt-tip').textContent");
+  check("hover in an inset shows its point", insetTip.includes("127.7"), insetTip);
+  const p6 = JSON.parse(await b.evaluate("JSON.stringify(ctl[6].state.layout.panels[1])"));
+  await sleep(400);
+  await drag(6, [p6.x + 10, p6.y + 10], [p6.x + p6.innerW - 10, p6.y + p6.innerH - 10]);
+  check("a drag in an inset does not zoom", await b.evaluate("ctl[6].state.domains === ctl[6].state.home"));
+
+  // A raster is drawn without smoothing: a pixel 2 px from the edge between a red and a blue cell is pure red.
+  const sample = await b.evaluate(`(async () => {
+    const st = ctl[7].state, p = st.panels[0], box = st.layout.panels[0];
+    const edge = box.x + p.plot.scale("x").apply(135.25), y = box.y + p.plot.scale("y").apply(35);
+    const img = new Image();
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(st.svg));
+    await img.decode();
+    const canvas = Object.assign(document.createElement("canvas"), { width: st.W, height: st.H });
+    const g = canvas.getContext("2d");
+    g.drawImage(img, 0, 0, st.W, st.H);
+    return JSON.stringify([...g.getImageData(Math.round(edge - 2), Math.round(y), 1, 1).data.slice(0, 3)]);
+  })()`);
+  check("a raster is drawn without smoothing in the browser", sample === "[255,0,0]", sample);
 
   check("no page errors", b.errors.length === 0, b.errors.join("; "));
 } finally {

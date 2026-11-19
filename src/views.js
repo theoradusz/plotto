@@ -1,5 +1,6 @@
 // Views: the data that one layer draws in one panel, after its statistic (summary, stack, bins, density, smooth).
 // A view has columns named like the channels (x, y, ymin, ...), and the hover anchor and fields of each row.
+import * as d3 from "d3";
 import { channelValues } from "./scales.js";
 import { barIntervals, bin, binEdges, density, position, smooth, summarize } from "./stats.js";
 
@@ -37,10 +38,81 @@ export function makeView(ctx, layer, rows, hidden) {
     cols = stacked(b, sizeOf(b), o.position ?? "stack");
   } else if (layer.type === "density") cols = density(raw, n);
   else if (layer.type === "smooth") cols = smooth(raw, n, o);
-  if (cols !== raw) source = null;
-  const view = { cols, n: cols === raw ? n : sizeOf(cols), rows: source };
+  else if (layer.type === "polygon") cols = { ...raw, ...bounds(raw.geometry) };
+  let grid;
+  if (layer.type === "raster") {
+    grid = rasterGrid(raw.x, raw.y);
+    cols = { ...raw, xmin: [grid.x.edges[0]], xmax: [grid.x.edges[1]], ymin: [grid.y.edges[0]], ymax: [grid.y.edges[1]] }; // the cell edges train the domain
+  }
+  const derived = cols !== raw && layer.type !== "polygon" && layer.type !== "raster"; // a statistic makes new rows
+  if (derived) source = null;
+  const view = { cols, n: derived ? sizeOf(cols) : n, rows: source, grid };
+  if (o.position === "dodge" && DODGE.includes(layer.type)) view.shift = dodgeShift(ctx, layer, cols, view.n);
   view.hover = hoverOf(ns, layer, view);
   return view;
+}
+
+const DODGE = ["point", "segment", "errorbar"]; // bar dodges with its stack (stats.js)
+
+// Dodge of point, segment and errorbar: each color gets a slot of the category band, in the legend order of all
+// the colors of the plot, so a color has the same place in every category, panel and layer, and a hidden color
+// leaves its slot empty. Returns { axis, frac }: the offset of each row, as a share of the bandwidth.
+function dodgeShift({ kind, colorLevels, colorKind }, layer, cols, n) {
+  const where = `${layer.type}()`;
+  const axis = kind.x === "category" ? "x" : kind.y === "category" && layer.type !== "errorbar" ? "y" : null;
+  if (!axis) throw new Error(`${where}: dodge needs a category ${layer.type === "errorbar" ? "x" : "x or y"} axis`);
+  if (!layer.channels.color?.column) return { axis, frac: new Array(n).fill(0) };
+  if (colorKind !== "ordinal") throw new Error(`${where}: dodge needs color mapped to a category column`);
+  const slots = colorLevels.length;
+  return { axis, frac: Array.from({ length: n }, (_, i) => (colorLevels.indexOf(cols.color[i]) + 0.5) / slots - 0.5), slots };
+}
+
+// The regular grid of a raster: per axis the first cell center, the step and the cell count, and the cell index of
+// each row (or -1). The data has 6 significant digits (0.0125° comes as 0.012 or 0.013), so the step is the mean of
+// the gaps between neighbouring values over the steps that each gap spans, refined twice; a value more than a quarter
+// of a step off the grid is an error.
+function rasterGrid(xs, ys) {
+  const axis = (values, name) => {
+    const u = [...new Set(values.filter((v) => v !== null && Number.isFinite(v)))].sort((a, b) => a - b);
+    if (u.length < 2) {
+      const lo = u[0] ?? 0;
+      return { lo, step: 1, n: 1, edges: [lo - 0.5, lo + 0.5], index: values.map((v) => (v === null ? -1 : 0)) };
+    }
+    const gaps = d3.pairs(u, (a, b) => b - a);
+    let step = d3.median(gaps);
+    for (let k = 0; k < 3; k++) step = d3.sum(gaps) / d3.sum(gaps, (g) => Math.max(1, Math.round(g / step)));
+    const lo = u[0];
+    const index = values.map((v) => {
+      if (v === null || !Number.isFinite(v)) return -1;
+      const i = Math.round((v - lo) / step);
+      if (Math.abs((v - lo) / step - i) > 0.25) throw new Error(`raster(): ${name} = ${v} is not on a regular grid (step ${d3.format(".6~g")(step)} from ${lo})`);
+      return i;
+    });
+    const n = Math.round((u.at(-1) - lo) / step) + 1;
+    return { lo, step, n, edges: [lo - step / 2, lo + (n - 0.5) * step], index };
+  };
+  return { x: axis(xs, "x"), y: axis(ys, "y") };
+}
+
+// The bounding box of each geometry (xmin, xmax, ymin, ymax), which trains the axis domains.
+// A geometry object keeps its box, so a redraw (legend click) does not compute it again.
+const BOXES = new WeakMap();
+function bounds(geometries) {
+  const out = { xmin: [], xmax: [], ymin: [], ymax: [] };
+  for (const g of geometries) {
+    if (g && !BOXES.has(g)) {
+      let [x0, x1, y0, y1] = [Infinity, -Infinity, Infinity, -Infinity];
+      const walk = (c) => {
+        if (typeof c[0] === "number") [x0, x1, y0, y1] = [Math.min(x0, c[0]), Math.max(x1, c[0]), Math.min(y0, c[1]), Math.max(y1, c[1])];
+        else for (const part of c) walk(part);
+      };
+      walk(g.coordinates);
+      BOXES.set(g, x0 <= x1 ? [x0, x1, y0, y1] : [null, null, null, null]);
+    }
+    const [x0, x1, y0, y1] = g ? BOXES.get(g) : [null, null, null, null];
+    out.xmin.push(x0), out.xmax.push(x1), out.ymin.push(y0), out.ymax.push(y1);
+  }
+  return out;
 }
 
 // The hover anchor (hx, hy) and the label fields of a view, or null for layers without hover.
@@ -78,6 +150,12 @@ function hoverOf(ns, layer, { cols, rows }) {
     }
     case "box":
       return { hx: cols.x, hy: cols.y, fields: [xField, field(Y, "y", cols.y)] };
+    case "raster":
+      return { fields: [xField, field(Y, "y", cols.y), field(ns.labels.fill ?? layer.channels.fill.column ?? "value", null, cols.fill)] };
+    case "polygon": {
+      const value = (ch) => (layer.channels[ch]?.column ? [field(ns.labels[ch] ?? layer.channels[ch].column, null, cols[ch])] : []);
+      return { fields: [...value("fill"), ...value("color")], header: tooltip[0] ?? null, polygon: true };
+    }
     default:
       return null;
   }

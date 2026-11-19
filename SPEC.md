@@ -39,9 +39,11 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 | `layers[].mapping` | Layer channels → column names |
 | `layers[].set` | Constants: channel values and options |
 | `facet` | `{wrap, free, ncol}`, `{rows, cols, free}` or `null` |
-| `scales` | `x`, `y`: `type`, `limits`, `format`. `color`: `values`, `palette`, `scheme`, `limits`, `mid`, `clamp`. |
-| `labels` | `title`, `subtitle`, `caption`, `x`, `y`, `color`. `null` removes a title. A missing key uses the first mapped column name. |
+| `scales` | `x`, `y`: `type`, `limits`, `format`, `breaks`, `labels`. `color`, `fill`: `values`, `palette`, `scheme`, `limits`, `mid`, `clamp`, `breaks`, `labels`. |
+| `labels` | `title`, `subtitle`, `caption`, `x`, `y`, `color`, `fill`. `null` removes a title. A missing key uses the first mapped column name. |
 | `info` | Optional. `entries`: `[key, value]` pairs in order; a value is a string, a number, a boolean or `null`. `position`: `right` or `bottom`; without it, `right`, or the place with the most room in a fixed size. |
+| `coord` | Optional. `{type: "geo", scalebar?, north?}`: map coordinates, with the corners of the scale bar and the north arrow (§5) |
+| `insets` | Optional. `[{x: [low, high], y: [low, high], at: [left, bottom, right, top]}]`: inset panels (§6) |
 | `theme` | `style`, `format`, and the overrides `width`, `height`, `size`, `legend` |
 
 ### Column types
@@ -51,10 +53,13 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 | `number` | numbers | numeric dtypes | `number` |
 | `time` | wall-clock epoch ms | `datetime64`. A time-zone-aware column keeps its local clock time. | `Date` (local clock time) |
 | `string` | strings | object, string, bool (`"true"`, `"false"`), categorical (with `levels`) | any other value |
+| `geometry` | GeoJSON geometries (`{type, coordinates}`) | values with `__geo_interface__` (a GeoDataFrame geometry column, shapely) or GeoJSON dicts | GeoJSON geometry objects |
 
 - Times are wall-clock times. The axis shows the clock time of the data, in every output and every time zone.
 - A float that is not an integer keeps 6 significant digits.
 - The builders send only the columns that a mapping or a facet uses.
+- Geometry coordinates keep 5 decimals (about 1 m in degrees).
+- `plot()` and the `data` of a layer also take a GeoJSON FeatureCollection: one row per feature, with its properties as columns and its geometry in the column `geometry`.
 
 ## 3. Builder rules
 
@@ -73,10 +78,10 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 
 | Method | Channels | Options | Statistic | Observable Plot mark |
 |---|---|---|---|---|
-| `line` | x, y, color, group, tooltip | size, alpha, dash, summary | `summary` | `line`, sorted by x |
+| `line` | x, y, color, group, tooltip | size, alpha, dash, summary, direct | `summary` | `line`, sorted by x; `text` for the direct labels |
 | `path` | x, y, color, group, tooltip | size, alpha, dash | – | `line`, in row order |
 | `step` | x, y, color, group, tooltip | size, alpha, dash | – | `line`, step after each point |
-| `point` | x, y, color, tooltip | size, alpha, jitter, summary | `summary` | `dot` |
+| `point` | x, y, color, tooltip | size, alpha, jitter, summary, position | `summary`, dodge | `dot` |
 | `bar` | x, y, color, tooltip | alpha, position | stack or dodge | `barY` (category x), `rect` (number or time x, 90% of the data step) |
 | `hist` | x, color | alpha, bins, density, position | bins | `rect` |
 | `density` | x, color | size, alpha, dash | Gaussian kernel density | `areaY` + `line` |
@@ -85,12 +90,14 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 | `smooth` | x, y, color | size, alpha, dash, method, span, band | linear fit or loess | `areaY` (band) + `line` |
 | `hline`, `vline` | y or x, color | size, alpha, dash | – | `ruleY`, `ruleX` |
 | `abline` | color | slope, intercept, size, alpha, dash | – | `line` across the x domain |
-| `segment` | x, y, xend, yend, color | size, alpha, dash | – | `link` |
+| `segment` | x, y, xend, yend, color | size, alpha, dash, position | dodge | `link` |
 | `rect` | xmin, xmax, ymin, ymax, color, tooltip | alpha | – | `rect` |
 | `band` | xmin, xmax, ymin, ymax, color | alpha | – | `rect`. A missing bound is the panel edge. |
 | `tile` | x, y, color, tooltip | alpha | – | `cell` (two categories), `barX`/`barY` (one category), `rect` (two numbers) |
-| `text` | x, y, label, color | size, alpha | – | `text` |
-| `errorbar` | x, ymin, ymax, color | size, alpha | – | `ruleX` and two caps |
+| `text` | x, y, label, color | size, alpha, repel | – | `text`; with `repel`, leader lines (`path`) |
+| `errorbar` | x, ymin, ymax, color | size, alpha, position | dodge | `ruleX` and two caps |
+| `polygon` | geometry, fill, color, tooltip | size, alpha | – | `geo`, through the x and y scales |
+| `raster` | x, y, fill | alpha | the grid of the cells | one `image` (a PNG) in an `svg` clipped to the frame |
 | `box` | x, y, color | alpha (of the box fill, default 0.3) | Tukey box per category (`boxStats` in `stats.js`): quartiles, whiskers to the last values within 1.5 IQR, outliers | `barY` (q1 to q3, outlined in the series color), `tickY` (bold median and whisker caps), `ruleX` (whiskers), `dot` (outliers, in the series color) |
 
 | Option | Values | Meaning |
@@ -100,18 +107,25 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 | `dash` | `solid`, `dashed`, `dotted`, `dashdot` | Line pattern |
 | `jitter` | number | Random horizontal offset, as a share of the category width or of the x step. The seed is fixed, so each output is the same. |
 | `summary` | `mean`, `median`, `min`, `max`, `sum` | One row per (x, color, group), with the summary of y |
-| `position` | `stack` (default), `dodge` (bar only), `overlay` | Stack: the colors add up at each x, in the legend order. Dodge: one bar per color, side by side. Overlay: each color starts at 0; fills are see-through. |
+| `position` | `stack`, `dodge`, `overlay` | Bars and areas (default `stack`): the colors add up at each x, in the legend order. Dodge (bars): one bar per color, side by side. Overlay: each color starts at 0; fills are see-through. Points, segments and error bars (default `overlay`; `stack` is an error): dodge puts each color in its own slot of the category band (below). |
 | `bins` | number | About this number of bins on round values (default 30). All panels and colors use the same bins. |
 | `density` | `true`, `false` | `hist` counts divided by (rows × bin width), so the area is 1 |
 | `method` | `lm` (default), `loess` | `lm`: least squares with a 95% confidence band (Student t). `loess`: local linear fit with tricube weights, without a band. |
 | `span` | 0–1 | The share of the points in each local fit of `loess` (default 0.75) |
 | `band` | `true` (default), `false` | The confidence band of `lm` |
+| `direct` | `true`, `false` (default) | The name of each line at its end (below) |
+| `repel` | `true`, `false` (default) | Text labels move to a free place near their point (below) |
 
-- `color` maps the stroke of lines and the fill of points, bars, areas, rects, tiles and text.
+- `color` maps the stroke of lines and the fill of points, bars, areas, rects, tiles and text, and the outline of polygons. `fill` maps the fill of polygons and rasters.
 - A line, path or step without `group` has one line per color value. A missing value (`null`) makes a gap.
 - A layer without columns, for example `hline(y=0)`, draws once in each panel.
 - A layer table without the facet column draws in each panel.
 - A statistic runs on the rows of each panel, after the legend filter. Bin edges do not depend on the panel.
+- Dodge of `point`, `segment` and `errorbar`: the band of each category has one slot per color of the plot, in the legend order, so a color has the same place in every category, panel and layer, and the segments of a color meet its points. A color that the legend hides leaves its slot empty. The slots are along the category axis: x, else y (`errorbar` draws vertical bars, so it needs a category x). Dodge needs a category axis and a color mapped to a string column; a constant color takes the center. The caps of an error bar are 30% of the band, or 60% of a slot.
+- `polygon` draws the GeoJSON `Polygon` and `MultiPolygon` geometries of a geometry column, with x as the first coordinate (longitude) and y as the second (latitude). Holes stay empty (even-odd rule). Without `geometry`, it takes the column named `geometry`. `fill` fills the areas (a column, through the fill scale, or a color); `color` is the outline. Without `fill`, it draws outlines in `muted`, 0.6 px; with `fill`, thin outlines (0.5 px) in the `background` color separate the areas. `size` is the outline width; `alpha` the opacity of the fill (or of the outline without fill). The bounding boxes of the geometries train the axis domains. A geometry column goes to `geometry` only.
+- `raster` draws a regular grid of cells (one row per cell center, for example a 1 km mesh of seismic intensity) as one image of one pixel per cell, colored by the fill scale, without smoothing, under the layers after it. The grid step in x and y is the mean of the gaps between neighbouring distinct values over the number of steps that each gap spans (refined three times), so values with 6 significant digits keep their columns; a missing cell, or a `null` fill, is transparent. A value more than a quarter of a step off the grid is an error. The cell edges train the axis domains. x and y must be number or time axes. The PNG is made once per figure and a zoom moves it; Node and the browser write the same bytes.
+- `text(repel=true)` places each label, in row order (put the important ones first), at the first free place around its anchor: right, upper right, lower right, left, upper left, lower left, above, below (0.4 em beside, 0.2 em above or below, beyond a point drawn there), then on rings 0.5 em apart, up to 10 em. A place is free when the label is inside the panel and clear of the labels placed before, of the anchors, of the points of the `point` layers of the panel, of the insets and of the scale bar and north arrow. When no place is free, the label goes to the right of its anchor anyway. A label further than 1.5 em from its anchor gets a thin leader line in `muted`. The placement uses the font metrics (the same in Node and the browser) and runs again at each zoom.
+- Direct labels (`line(direct=true)`): each series (the `group` value, else the `color` value) gets its name right of its last point in view, in its color, darkened (or lightened on a dark background) to a contrast of 3:1 at least. A long name wraps to 2 lines, at most 160 px or 20% of the figure width. Labels that would overlap move apart vertically, and stay in the panel when there is room. Each panel gets a right margin for the longest name; the legend stays unless `theme(legend="none")`.
 
 ## 5. Scales
 
@@ -121,7 +135,8 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 - The axis domain trains on the layer views, which include the statistics. For example, it includes the 0 of a bar and the top of a stack.
 - The first view is `limits` when it is set. A `null` bound keeps the data bound on that side, with its 5% space. Without limits, the first view is the data range plus 5% on each side.
 - A category axis shows the categories in the `limits` order, then in the `levels` order, then in natural sort order. A label that is too wide for its band wraps at its spaces, to 3 lines at most. If a word is still too wide, all labels rotate by 40°; a rotated label gets 60% of the panel height (at least 10 em) and ends with an ellipsis beyond it, and the left margin grows so that the first one is not cut off.
-- Continuous axes have major ticks and minor grid lines at the midpoints. A log axis has ticks at the powers of ten, with minor lines at 2–9 times each power.
+- Continuous axes have major ticks and minor grid lines at the midpoints. A log axis has ticks at the powers of ten, with minor lines at 2–9 times each power; with fewer than three powers of ten in view, it has ticks at 1, 2 and 5 times each power.
+- `breaks` (a list of numbers or times) sets the major ticks of a number, log or time axis, with no minor grid lines; a zoom keeps them, and a break outside the view does not show. `labels` (strings, one per break) are the tick labels; without them, the label is `format`, or `~g` (log), `,~r` (linear) or the time pattern. Breaks on a category axis are an error.
 - Time labels are on one line. The pattern follows the tick step: `%Y-%m`, `%m-%d`, `%m-%d %H:%M` (more than one day in view), `%H:%M` or `%H:%M:%S`. `format`, a d3-format or d3-time-format string, replaces it.
 
 ### Color
@@ -130,14 +145,41 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 |---|---|---|
 | `string` | One color per category: `values` (a list, or a map category → color), else `palette`, else the style palette, in order | Swatches: a square for fills, a line for lines, a point for points |
 | `number`, `time` | `values` (a list of colors), else `scheme`, else the style scheme | A color ramp |
+| `number`, `time`, with `breaks` | One color per class: `values` (a list of one color per break), else the scheme at the middle of each class | Steps: one box per class |
 
+There are two color scales: `color` (`color()`, the `color` channel) and `fill` (`fill()`, the `fill` channel of `polygon` and `raster`). They have the same options, each its own legend, and they can map different columns: for example the outage of each area (`fill`) and the class of each town (`color`).
+
+- `breaks` (numbers or times that increase) make a binned scale. The classes are `[b0, b1)`, …, `[b(n-1), bn)` and `[bn, ∞)`: one class per break, closed on the left. They depend on the breaks only, so two plots with the same breaks have the same colors. A value below `b0` is `muted` (with `clamp: true`, the first class) and has no legend entry; `null` is `muted`. `labels` (one per break) names the classes. `mid` and a map of `values` do not apply. Breaks on a string column are an error.
+- The steps legend has one box per class, low to high: left to right at the bottom, bottom to top on the right. The break values (format `,~r`, or the time pattern) are at the lower edge of each box; class names (`labels`) are on the boxes.
 - `limits` sets the categories (and their order) or the range of the color scale. A `null` bound keeps the data bound.
 - `mid` makes a diverging scale: `mid` takes the center color of the scheme, and each side stretches to its limit.
 - A list of colors and a plotto scheme interpolate in Lab space. A d3 scheme name (such as `viridis` or `blues`) uses the d3 interpolator.
 - A continuous value outside the domain is `muted`. `clamp: true` gives it the end color.
-- All color mappings of one plot must use the same column.
+- All the color mappings of one scale must use the same column.
+- A plot with mappings on both scales stacks the two legends (color first), at the right or at the bottom. The fill legend does not toggle values.
 - A long legend wraps into columns.
+- A horizontal color ramp has fewer ticks when their labels would touch.
 - A right legend keeps a narrow column (20% of the width, 110 to 200 px): a long label wraps to 3 lines at most, then ends with an ellipsis, and its full text is its SVG title. A bottom legend has one line per label.
+
+### Map coordinates
+
+`coord("geo")` makes x the longitude and y the latitude, in degrees, at the same distance per px in x and y.
+
+- One degree of longitude is `cos φ` degrees of latitude, at the center latitude φ of the view. This is exact for a region and about 10% off east-west at the edges of a map of all Japan (no projection).
+- The panels take the shape of the map (the median shape when the panels have their own extent), unless `theme(aspect=)` sets it. Each panel then grows its extent in x or in y, around its center, to fill its box. `limits` is the area that must show; one side can grow.
+- The stored view does not change: zoom, pan, reset, a resize and "Copy for a slide" draw it at equal scale again.
+- Tick labels are in degrees: `135°E`, `35°N` (W and S for negative values), unless `format` is set. There are no axis titles unless `labels()` sets them.
+- x and y must be number axes (not log, time or category), and `facet(free=)` must be `both` or unset.
+- `coord("geo", scalebar=, north=)`: `true` or a corner (`bottom-left`, `bottom-right`, `top-left`, `top-right`). `scalebar=true` is at the bottom left, `north=true` at the top right, 0.8 em inside the frame of each main panel (not the insets). The scale bar is a round length (1, 2 or 5 × 10^k km) near a fifth of the panel width, at 111.32 km × cos φ per degree of longitude, with its length as text above it; it follows the zoom. The north arrow points up.
+
+### Insets
+
+`inset(x=[low, high], y=[low, high], at=[left, bottom, right, top])` draws the extent x × y in a box of each panel; `at` is in shares of the panel, from its bottom left. For example the Okinawa islands, the Izu and Ogasawara islands, or eastern Hokkaido on a map of Japan, so that no point is left out of the main extent. Each call adds one inset.
+
+- An inset draws the layers of its panel (with the rows of that panel), on the `background` color, with a frame in `tick` and without axes and grid lines. It covers the panel under it.
+- In map coordinates, the extent grows on one side to fill the box at the same distance per px in x and y.
+- An inset keeps its extent: zoom, pan and the zoom buttons apply to the main panels only. Hover and pinned labels work in insets.
+- Insets need number or time axes.
 
 ## 6. Facets
 
@@ -201,7 +243,7 @@ A style can also list theme color names as its palette: the `paper` and `dark` s
 - A bottom legend has its title on its first row, before the items.
 - A format with `shrink` makes the facet strip text smaller (the same size for all strips) before it cuts a label, down to that share of its size.
 - `aspect` is the shape of each panel, height / width: `1` gives square panels (for observed-against-predicted plots, with the same `limits` on x and y). The panels shrink in one direction to get that shape. A `screen` plot without `height` changes its height instead (at most 1.2 times its usual height), so the panels fill it. The space that is left goes half on each side of the panels.
-- The title and the subtitle align left with the panels and wrap to two lines at most. A format with `shrink` first makes a long title or subtitle smaller, down to that share of its size, so that it stays on one line; one that does not fit even then keeps its size and wraps. A `screen` plot keeps room on the right for the toolbar; a fixed size uses the full width. The caption is at the bottom left.
+- The title and the subtitle align left with the panels and wrap to two lines at most. A format with `shrink` first makes a long title or subtitle smaller, down to that share of its size, so that it stays on one line; one that does not fit even then keeps its size and wraps. A `screen` plot keeps room on the right for the toolbar; a fixed size uses the full width. The caption is at the bottom left, aligned with the panels: it wraps at the width of the figure less the y axis, to 4 lines at most (a longer one ends with an ellipsis), and starts further left only when it would run off the figure.
 - A bottom info table puts its entries in up to 3 columns, as many as fit on one line each; else one column whose values wrap.
 - `src/metrics.js` holds the glyph widths of each style font for the layout. CJK characters are one em wide.
 
@@ -253,6 +295,8 @@ Hover:
 | bar, hist | The column nearest the pointer: one row per color, the segment under the pointer in bold, and the total of a stack | Outline of the segment |
 | box | The box under the pointer: whiskers, quartiles, median, count and outliers. It wins over the points drawn with it. | – |
 | tile | The value of the cell, and its x and y | Outline of the cell |
+| polygon | The area under the pointer (the top one): its tooltip value as the header, and its fill and color values. A point near the pointer wins. | – |
+| raster | The cell under the pointer: its fill value as the header, and its x and y | – |
 | point, path, errorbar | The nearest point within 40 px. It stays picked until another point is at least 4 px nearer. | Dot |
 
 - The label box is flat and square. Its header has the color of the hovered series. A light color gets dark text; any other color gets white text, on the color darkened until the contrast is at least 4:1. On several series, the header is dark and each row has a color swatch.
@@ -279,7 +323,9 @@ The Node SVG and the browser SVG are the same, except for the numbers of the cli
 ## 10. Limits
 
 - Themes are styles and formats with four overrides. There is no `element_*` theming.
-- There is one color scale per plot. Size and shape are constants, not mappings.
+- There are two color scales per plot: `color` and `fill`. Size and shape are constants, not mappings.
+- A raster has one row per cell in the spec (about 30 bytes per cell) and an image of 4 bytes per cell, without compression: crop the grid to the map (90 000 cells make a spec of about 3 MB).
+- A geometry column is JSON in the spec and in the notebook HTML: simplify the geometries first (for example `GeoSeries.simplify` or mapshaper). Each zoom and pan draws every area again.
 - There is no plot composition.
 - More than about 20 000 points make a large SVG: the SVG of 20 000 points is about 1.7 MB.
 - A saved SVG uses the fonts of the viewer. Without the style font, the text has other widths.
