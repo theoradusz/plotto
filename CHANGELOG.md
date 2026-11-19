@@ -11,6 +11,10 @@ Write each change under "Unreleased". `scripts/release.sh` moves them to the new
 - `point`, `segment` and `errorbar` take `position="dodge"`: each color gets its own slot of the category band, on a category x or y (error bars: x). A color has the same slot in every category, panel and layer, so the intervals of one model always sit with its points.
 - `line(direct=True)` writes the name of each series at the end of its line, in its color, so a plot can do without a legend.
 - `x(breaks=, labels=)` and `y(breaks=, labels=)` set the ticks of a number, log or time axis and their text.
+- `polygon()` draws GeoJSON `Polygon` and `MultiPolygon` areas, with holes, for choropleths and outlines. The data can be a GeoDataFrame, a GeoJSON FeatureCollection or a column of GeoJSON geometries (new column type `geometry`).
+- A second color scale, `fill`, with `fill()` and its own legend: a map can color the areas by one column and the points by another.
+- `color(breaks=)` and `fill(breaks=)` make classes, for example households 0 / 50 / 1,000 / 10,000, with a stepped legend. `labels=` names the classes.
+- `coord("geo")`: map coordinates. x (longitude) and y (latitude) get the same distance per px, the panels take the shape of the map, and the ticks are in degrees.
 
 ### Changed
 
@@ -20,6 +24,7 @@ Write each change under "Unreleased". `scripts/release.sh` moves them to the new
 ### Fixed
 
 - A log axis shows the label of each tick. On a narrow panel, Observable Plot left some labels empty, for example 5.
+- A color ramp at the bottom has fewer ticks when their labels would touch.
 
 ## 0.6.0 – 2026-11-13
 

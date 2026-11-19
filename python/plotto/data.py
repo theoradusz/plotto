@@ -12,11 +12,16 @@ def to_frame(data, where):
         return data
     if isinstance(data, list):
         return pd.DataFrame(data)
-    raise TypeError(f"{where}: data must be a pandas DataFrame or a list of row dicts")
+    if isinstance(data, dict) and data.get("type") == "FeatureCollection":
+        # One row per feature: its properties and its geometry (column "geometry").
+        return pd.DataFrame([{**(f.get("properties") or {}), "geometry": f.get("geometry")} for f in data.get("features", [])])
+    raise TypeError(f"{where}: data must be a pandas DataFrame, a list of row dicts or a GeoJSON FeatureCollection")
 
 
 def to_column(series: pd.Series) -> dict:
-    """One spec column: {"type": "number" | "time" | "string", "values": [...], "levels": [...]}."""
+    """One spec column: {"type": "number" | "time" | "string" | "geometry", "values": [...], "levels": [...]}."""
+    if _is_geometry(_first(series)):
+        return {"type": "geometry", "values": [None if _missing(v) else to_geometry(v) for v in series]}
     if isinstance(series.dtype, pd.CategoricalDtype):
         levels = [str(c) for c in series.cat.categories]
         return {"type": "string", "values": [None if pd.isna(v) else str(v) for v in series], "levels": levels}
@@ -30,6 +35,40 @@ def to_column(series: pd.Series) -> dict:
     if pd.api.types.is_numeric_dtype(series):
         return {"type": "number", "values": [to_value(v) for v in series.to_numpy()]}
     return {"type": "string", "values": [None if v is None or (isinstance(v, float) and math.isnan(v)) else str(v) for v in series]}
+
+
+def _missing(v):
+    return v is None or (isinstance(v, float) and math.isnan(v)) or getattr(v, "is_empty", False) is True
+
+
+def _first(series: pd.Series):
+    """The first value that is not missing, or None. Only object columns can hold geometries."""
+    if series.dtype != object and type(series.dtype).__name__ != "GeometryDtype":
+        return None
+    return next((v for v in series if not _missing(v)), None)
+
+
+def _is_geometry(v) -> bool:
+    """A shapely geometry (or any object with __geo_interface__) or a GeoJSON geometry dict."""
+    if hasattr(v, "__geo_interface__"):
+        return True
+    return isinstance(v, dict) and isinstance(v.get("type"), str) and "coordinates" in v
+
+
+def to_geometry(v) -> dict:
+    """A GeoJSON geometry with lists (not tuples) and coordinates rounded to 5 decimals (about 1 m in degrees)."""
+    g = v.__geo_interface__ if hasattr(v, "__geo_interface__") else v
+
+    def rounded(c):
+        if not len(c) or _number(c[0]) or _number(c[0][0]):  # a position, or a ring of positions: one array call
+            return np.round(np.asarray(c, dtype=float), 5).tolist()
+        return [rounded(part) for part in c]
+
+    return {"type": g["type"], "coordinates": rounded(g["coordinates"])}
+
+
+def _number(v) -> bool:
+    return isinstance(v, (int, float, np.integer, np.floating)) and not isinstance(v, bool)
 
 
 def to_value(v):

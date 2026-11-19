@@ -70,6 +70,10 @@ def test_only_used_columns_go_into_the_spec():
         (lambda p: p.x(labels=["a"]), "labels need breaks"),
         (lambda p: p.x(breaks=[1, 2], labels=["a"]), "labels must have one entry per break"),
         (lambda p: p.line(direct="yes"), "direct must be True or False"),
+        (lambda p: p.color(breaks=[1, 1]), "breaks must increase"),
+        (lambda p: p.color(breaks=[0, 1], mid=0.5), "mid does not apply with breaks"),
+        (lambda p: p.fill(breaks=[0, 1], values=["red"]), "one color per break"),
+        (lambda p: p.coord("mercator"), 'unknown type "mercator"'),
     ],
 )
 def test_errors_name_the_problem_and_the_valid_names(build, message):
@@ -117,3 +121,37 @@ def test_breaks_accept_numpy_values_and_times():
     assert p.y(breaks=np.array([1, 2.5])).spec()["scales"]["y"]["breaks"] == [1, 2.5]
     breaks = p.x(breaks=[pd.Timestamp("2026-10-20")], labels=["start"]).spec()["scales"]["x"]
     assert breaks == {"breaks": [int(pd.Timestamp("2026-10-20").value // 1_000_000)], "labels": ["start"]}
+
+
+class _Shape:
+    """A shapely-like geometry: only __geo_interface__, with tuples, as shapely gives."""
+
+    def __init__(self, x):
+        self.__geo_interface__ = {"type": "Polygon", "coordinates": (((x, 0.0), (x + 1.0, 0.0), (x + 1.0, 1.0), (x, 0.0)),)}
+
+
+def test_geometries_from_geo_interface_and_dicts_become_a_geometry_column():
+    df = pd.DataFrame(
+        {"geometry": [_Shape(0.123456789), None, {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [0, 1], [0, 0]]]}], "v": [1, 2, 3]}
+    )
+    spec = plot(df).polygon(fill="v").spec()
+    assert spec["layers"][0]["mapping"] == {"fill": "v", "geometry": "geometry"}
+    column = spec["data"][0]["columns"]["geometry"]
+    assert column["type"] == "geometry"
+    assert column["values"][0]["coordinates"][0][0] == [0.12346, 0.0]
+    assert column["values"][1] is None
+
+
+def test_a_feature_collection_is_one_row_per_feature():
+    fc = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {"name": "A"},
+                "geometry": {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [0, 1], [0, 0]]]},
+            }
+        ],
+    }
+    spec = plot(fc).polygon(tooltip="name").spec()
+    assert spec["data"][0]["columns"]["name"] == {"type": "string", "values": ["A"]}

@@ -39,9 +39,10 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 | `layers[].mapping` | Layer channels → column names |
 | `layers[].set` | Constants: channel values and options |
 | `facet` | `{wrap, free, ncol}`, `{rows, cols, free}` or `null` |
-| `scales` | `x`, `y`: `type`, `limits`, `format`, `breaks`, `labels`. `color`: `values`, `palette`, `scheme`, `limits`, `mid`, `clamp`. |
-| `labels` | `title`, `subtitle`, `caption`, `x`, `y`, `color`. `null` removes a title. A missing key uses the first mapped column name. |
+| `scales` | `x`, `y`: `type`, `limits`, `format`, `breaks`, `labels`. `color`, `fill`: `values`, `palette`, `scheme`, `limits`, `mid`, `clamp`, `breaks`, `labels`. |
+| `labels` | `title`, `subtitle`, `caption`, `x`, `y`, `color`, `fill`. `null` removes a title. A missing key uses the first mapped column name. |
 | `info` | Optional. `entries`: `[key, value]` pairs in order; a value is a string, a number, a boolean or `null`. `position`: `right` or `bottom`; without it, `right`, or the place with the most room in a fixed size. |
+| `coord` | Optional. `{type: "geo"}`: map coordinates (§5) |
 | `theme` | `style`, `format`, and the overrides `width`, `height`, `size`, `legend` |
 
 ### Column types
@@ -51,10 +52,13 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 | `number` | numbers | numeric dtypes | `number` |
 | `time` | wall-clock epoch ms | `datetime64`. A time-zone-aware column keeps its local clock time. | `Date` (local clock time) |
 | `string` | strings | object, string, bool (`"true"`, `"false"`), categorical (with `levels`) | any other value |
+| `geometry` | GeoJSON geometries (`{type, coordinates}`) | values with `__geo_interface__` (a GeoDataFrame geometry column, shapely) or GeoJSON dicts | GeoJSON geometry objects |
 
 - Times are wall-clock times. The axis shows the clock time of the data, in every output and every time zone.
 - A float that is not an integer keeps 6 significant digits.
 - The builders send only the columns that a mapping or a facet uses.
+- Geometry coordinates keep 5 decimals (about 1 m in degrees).
+- `plot()` and the `data` of a layer also take a GeoJSON FeatureCollection: one row per feature, with its properties as columns and its geometry in the column `geometry`.
 
 ## 3. Builder rules
 
@@ -91,6 +95,7 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 | `tile` | x, y, color, tooltip | alpha | – | `cell` (two categories), `barX`/`barY` (one category), `rect` (two numbers) |
 | `text` | x, y, label, color | size, alpha | – | `text` |
 | `errorbar` | x, ymin, ymax, color | size, alpha, position | dodge | `ruleX` and two caps |
+| `polygon` | geometry, fill, color, tooltip | size, alpha | – | `geo`, through the x and y scales |
 | `box` | x, y, color | alpha (of the box fill, default 0.3) | Tukey box per category (`boxStats` in `stats.js`): quartiles, whiskers to the last values within 1.5 IQR, outliers | `barY` (q1 to q3, outlined in the series color), `tickY` (bold median and whisker caps), `ruleX` (whiskers), `dot` (outliers, in the series color) |
 
 | Option | Values | Meaning |
@@ -108,12 +113,13 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 | `band` | `true` (default), `false` | The confidence band of `lm` |
 | `direct` | `true`, `false` (default) | The name of each line at its end (below) |
 
-- `color` maps the stroke of lines and the fill of points, bars, areas, rects, tiles and text.
+- `color` maps the stroke of lines and the fill of points, bars, areas, rects, tiles and text, and the outline of polygons. `fill` maps the fill of polygons (and rasters).
 - A line, path or step without `group` has one line per color value. A missing value (`null`) makes a gap.
 - A layer without columns, for example `hline(y=0)`, draws once in each panel.
 - A layer table without the facet column draws in each panel.
 - A statistic runs on the rows of each panel, after the legend filter. Bin edges do not depend on the panel.
 - Dodge of `point`, `segment` and `errorbar`: the band of each category has one slot per color of the plot, in the legend order, so a color has the same place in every category, panel and layer, and the segments of a color meet its points. A color that the legend hides leaves its slot empty. The slots are along the category axis: x, else y (`errorbar` draws vertical bars, so it needs a category x). Dodge needs a category axis and a color mapped to a string column; a constant color takes the center. The caps of an error bar are 30% of the band, or 60% of a slot.
+- `polygon` draws the GeoJSON `Polygon` and `MultiPolygon` geometries of a geometry column, with x as the first coordinate (longitude) and y as the second (latitude). Holes stay empty (even-odd rule). Without `geometry`, it takes the column named `geometry`. `fill` fills the areas (a column, through the fill scale, or a color); `color` is the outline. Without `fill`, it draws outlines in `muted`, 0.6 px; with `fill`, thin outlines (0.5 px) in the `background` color separate the areas. `size` is the outline width; `alpha` the opacity of the fill (or of the outline without fill). The bounding boxes of the geometries train the axis domains. A geometry column goes to `geometry` only.
 - Direct labels (`line(direct=true)`): each series (the `group` value, else the `color` value) gets its name right of its last point in view, in its color, darkened (or lightened on a dark background) to a contrast of 3:1 at least. A long name wraps to 2 lines, at most 160 px or 20% of the figure width. Labels that would overlap move apart vertically, and stay in the panel when there is room. Each panel gets a right margin for the longest name; the legend stays unless `theme(legend="none")`.
 
 ## 5. Scales
@@ -134,14 +140,31 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 |---|---|---|
 | `string` | One color per category: `values` (a list, or a map category → color), else `palette`, else the style palette, in order | Swatches: a square for fills, a line for lines, a point for points |
 | `number`, `time` | `values` (a list of colors), else `scheme`, else the style scheme | A color ramp |
+| `number`, `time`, with `breaks` | One color per class: `values` (a list of one color per break), else the scheme at the middle of each class | Steps: one box per class |
 
+There are two color scales: `color` (`color()`, the `color` channel) and `fill` (`fill()`, the `fill` channel of `polygon`). They have the same options, each its own legend, and they can map different columns: for example the outage of each area (`fill`) and the class of each town (`color`).
+
+- `breaks` (numbers or times that increase) make a binned scale. The classes are `[b0, b1)`, …, `[b(n-1), bn)` and `[bn, ∞)`: one class per break, closed on the left. They depend on the breaks only, so two plots with the same breaks have the same colors. A value below `b0` is `muted` (with `clamp: true`, the first class) and has no legend entry; `null` is `muted`. `labels` (one per break) names the classes. `mid` and a map of `values` do not apply. Breaks on a string column are an error.
+- The steps legend has one box per class, low to high: left to right at the bottom, bottom to top on the right. The break values (format `,~r`, or the time pattern) are at the lower edge of each box; class names (`labels`) are on the boxes.
 - `limits` sets the categories (and their order) or the range of the color scale. A `null` bound keeps the data bound.
 - `mid` makes a diverging scale: `mid` takes the center color of the scheme, and each side stretches to its limit.
 - A list of colors and a plotto scheme interpolate in Lab space. A d3 scheme name (such as `viridis` or `blues`) uses the d3 interpolator.
 - A continuous value outside the domain is `muted`. `clamp: true` gives it the end color.
-- All color mappings of one plot must use the same column.
+- All the color mappings of one scale must use the same column.
+- A plot with mappings on both scales stacks the two legends (color first), at the right or at the bottom. The fill legend does not toggle values.
 - A long legend wraps into columns.
+- A horizontal color ramp has fewer ticks when their labels would touch.
 - A right legend keeps a narrow column (20% of the width, 110 to 200 px): a long label wraps to 3 lines at most, then ends with an ellipsis, and its full text is its SVG title. A bottom legend has one line per label.
+
+### Map coordinates
+
+`coord("geo")` makes x the longitude and y the latitude, in degrees, at the same distance per px in x and y.
+
+- One degree of longitude is `cos φ` degrees of latitude, at the center latitude φ of the view. This is exact for a region and about 10% off east-west at the edges of a map of all Japan (no projection).
+- The panels take the shape of the map (the median shape when the panels have their own extent), unless `theme(aspect=)` sets it. Each panel then grows its extent in x or in y, around its center, to fill its box. `limits` is the area that must show; one side can grow.
+- The stored view does not change: zoom, pan, reset, a resize and "Copy for a slide" draw it at equal scale again.
+- Tick labels are in degrees: `135°E`, `35°N` (W and S for negative values), unless `format` is set. There are no axis titles unless `labels()` sets them.
+- x and y must be number axes (not log, time or category), and `facet(free=)` must be `both` or unset.
 
 ## 6. Facets
 
@@ -257,6 +280,7 @@ Hover:
 | bar, hist | The column nearest the pointer: one row per color, the segment under the pointer in bold, and the total of a stack | Outline of the segment |
 | box | The box under the pointer: whiskers, quartiles, median, count and outliers. It wins over the points drawn with it. | – |
 | tile | The value of the cell, and its x and y | Outline of the cell |
+| polygon | The area under the pointer (the top one): its tooltip value as the header, and its fill and color values. A point near the pointer wins. | – |
 | point, path, errorbar | The nearest point within 40 px. It stays picked until another point is at least 4 px nearer. | Dot |
 
 - The label box is flat and square. Its header has the color of the hovered series. A light color gets dark text; any other color gets white text, on the color darkened until the contrast is at least 4:1. On several series, the header is dark and each row has a color swatch.
@@ -283,7 +307,8 @@ The Node SVG and the browser SVG are the same, except for the numbers of the cli
 ## 10. Limits
 
 - Themes are styles and formats with four overrides. There is no `element_*` theming.
-- There is one color scale per plot. Size and shape are constants, not mappings.
+- There are two color scales per plot: `color` and `fill`. Size and shape are constants, not mappings.
+- A geometry column is JSON in the spec and in the notebook HTML: simplify the geometries first (for example `GeoSeries.simplify` or mapshaper). Each zoom and pan draws every area again.
 - There is no plot composition.
 - More than about 20 000 points make a large SVG: the SVG of 20 000 points is about 1.7 MB.
 - A saved SVG uses the fonts of the viewer. Without the style font, the text has other widths.

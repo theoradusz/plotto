@@ -36,6 +36,7 @@ def plot(data, **mapping) -> Plot:
         "scales": {},
         "labels": {},
         "info": None,
+        "coord": None,
         "theme": {"style": "pastel"},
     }
     return Plot(state)
@@ -70,6 +71,10 @@ class Plot:
                 _fail(where, "option", key, ["data", *definition["channels"], *definition["options"]])
         if layer["set"].get("position") == "stack" and type_ in NO_STACK:
             raise ValueError(f"{where}: position must be overlay or dodge")
+        # A polygon takes the column named "geometry" (a GeoJSON or GeoDataFrame table) unless a mapping sets it.
+        plot_geometry = self._s["mapping"].get("geometry")
+        if type_ == "polygon" and "geometry" not in layer["mapping"] and plot_geometry not in columns and "geometry" in columns:
+            layer["mapping"]["geometry"] = "geometry"
         return self._with(data=tables, layers=[*self._s["layers"], layer])
 
     def line(self, **options):
@@ -132,6 +137,10 @@ class Plot:
     def box(self, **options):
         return self._layer("box", **options)
 
+    def polygon(self, **options):
+        """Filled areas from a geometry column (GeoJSON Polygon or MultiPolygon): polygon(fill="households")."""
+        return self._layer("polygon", **options)
+
     def facet(self, by, **options) -> Plot:
         _need_column(self._s["data"][0], by, "facet()")
         _check_keys(options, GRAMMAR["facet"], "facet()")
@@ -156,6 +165,9 @@ class Plot:
 
     def color(self, **options):
         return self._scale("color", options)
+
+    def fill(self, **options):
+        return self._scale("fill", options)
 
     def _scale(self, name, options) -> Plot:
         where = f"{name}()"
@@ -184,7 +196,16 @@ class Plot:
             if not isinstance(labels, (list, tuple)) or len(labels) != len(scale["breaks"]) or not all(isinstance(v, str) for v in labels):
                 raise ValueError(f"{where}: labels must have one entry per break, as strings")
             scale["labels"] = list(labels)
+        if "breaks" in scale and name in ("color", "fill"):
+            _check_classes(scale, where)
         return self._with(scales={**self._s["scales"], name: scale})
+
+    def coord(self, type_, **options) -> Plot:
+        """Map coordinates: coord("geo") makes x (longitude) and y (latitude) the same distance per px."""
+        if type_ not in GRAMMAR["coord"]:
+            _fail("coord()", "type", type_, GRAMMAR["coord"])
+        _check_keys(options, [], "coord()")
+        return self._with(coord={"type": type_})
 
     def labels(self, **options) -> Plot:
         _check_keys(options, GRAMMAR["labels"], "labels()")
@@ -259,6 +280,8 @@ class Plot:
         }
         if s["info"]:
             spec["info"] = s["info"]
+        if s["coord"]:
+            spec["coord"] = s["coord"]
         spec["theme"] = s["theme"]
         return spec
 
@@ -303,11 +326,23 @@ def _constant(key, value, where, columns):
         raise ValueError(f"{where}: {key} must be a number")
     if kind == "boolean" and not isinstance(value, bool):
         raise ValueError(f"{where}: {key} must be True or False")
-    if key in ("color", "label"):
+    if key in ("color", "fill", "label"):
         return value
     if isinstance(value, str) and not kind:
         raise ValueError(f'{where}: "{value}" is not a column. Columns: {", ".join(columns)}')
     return to_value(value)
+
+
+def _check_classes(scale, where):
+    """A binned color scale: breaks that increase, colors (a list) of one per class, and no mid."""
+    breaks = scale["breaks"]
+    if any(b <= a for a, b in zip(breaks, breaks[1:], strict=False)):
+        raise ValueError(f"{where}: breaks must increase")
+    if "mid" in scale:
+        raise ValueError(f"{where}: mid does not apply with breaks")
+    values = scale.get("values")
+    if values is not None and (not isinstance(values, (list, tuple)) or len(values) != len(breaks)):
+        raise ValueError(f"{where}: with breaks, values must be a list of one color per break (class)")
 
 
 def _is_break(v):

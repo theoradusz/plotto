@@ -3,6 +3,7 @@
 build_site.py draws them into docs/ (the GitHub Pages site); showcase.ipynb shows them in a notebook.
 """
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -319,6 +320,47 @@ def axis_breaks():
     )
 
 
+# --- Maps -----------------------------------------------------------------------------------
+
+
+def districts():
+    """30 made-up districts as a GeoJSON FeatureCollection (make_datasets.py)."""
+    return json.loads((DATA / "districts.geojson").read_text())
+
+
+def choropleth():
+    """A choropleth: polygon(fill=) from a GeoJSON FeatureCollection (or a GeoDataFrame). fill(breaks=) makes classes
+    with a stepped legend; coord("geo") gives the same distance per px in x and y. The lake (a hole) stays empty."""
+    return (
+        plot(districts())
+        .polygon(fill="without_water", tooltip="name")
+        .fill(breaks=[0, 50, 1000, 10000], scheme="yuhi")
+        .coord("geo")
+        .labels(title="Households without water per district", subtitle="After a made-up earthquake", fill="households")
+    )
+
+
+def map_layers():
+    """Outlines and points: polygon() without fill draws the outlines. fill and color are two scales, so a map can
+    show the households (fill) and the outage class of each town (color), each with its legend."""
+    towns = load("district_towns").merge(
+        pd.DataFrame([f["properties"] for f in districts()["features"]])[["name", "without_water"]], on="name"
+    )
+    towns["outage"] = pd.cut(
+        towns.without_water, [0, 1000, 10000, np.inf], right=False, labels=["under 1,000", "1,000 to 9,999", "10,000 or more"]
+    )
+    return (
+        plot(districts())
+        .polygon(fill="households", color="white", size=1)
+        .point(data=towns, x="lon", y="lat", color="outage", size=4)
+        .fill(scheme="sumi")
+        .color(values=["yellow", "orange", "red"])
+        .coord("geo")
+        .labels(title="Households and outages", fill="households", color="households without water")
+        .theme(legend="bottom")
+    )
+
+
 # --- Styles and output ----------------------------------------------------------------------
 
 
@@ -472,6 +514,13 @@ PAGES = {
             "Palettes": [palettes],
             "Gradients": [continuous, schemes, diverging],
             "Styles and formats": [styles],
+        },
+    },
+    "maps": {
+        "file": "maps.html",
+        "title": "Maps",
+        "sections": {
+            "Areas and points": [choropleth, map_layers],
         },
     },
     "scales": {

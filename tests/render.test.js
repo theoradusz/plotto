@@ -8,7 +8,7 @@ import { figure } from "../src/figure.js";
 import { pick } from "../src/hover.js";
 import { slideFigure } from "../src/interact.js";
 import { renderSVG } from "../src/render.mjs";
-import { ticks } from "../src/scales.js";
+import { equalize, geoAspect, ticks } from "../src/scales.js";
 import { textWidth } from "../src/text.js";
 import { FORMATS, STYLES } from "../src/theme.js";
 
@@ -425,6 +425,109 @@ test("direct labels name each line at its end, apart from each other", () => {
   const short = figure(plot(ends.map((r) => ({ ...r, g: r.g.slice(0, 3) })), { x: "t", y: "v", color: "g" }).line({ direct: true }).spec(), { document });
   assert.ok(short.layout.panels[0].mr < f.layout.panels[0].mr, "the margin follows the longest name");
   assert.equal(figure(base.line().spec(), { document }).layout.panels[0].mr, 0);
+});
+
+// --- maps: polygons, fill scale, binned scale, coord("geo") ----------------------------------
+
+const square = (x, y, s) => [[x, y], [x + s, y], [x + s, y + s], [x, y + s], [x, y]];
+const districts = {
+  type: "FeatureCollection",
+  features: [
+    { type: "Feature", properties: { name: "A", hh: 10 }, geometry: { type: "Polygon", coordinates: [square(135, 35, 1), square(135.25, 35.25, 0.5)] } },
+    { type: "Feature", properties: { name: "B", hh: 2000 }, geometry: { type: "MultiPolygon", coordinates: [[square(136, 35, 1)], [square(137.2, 35.2, 0.3)]] } },
+    { type: "Feature", properties: { name: "C", hh: null }, geometry: { type: "Polygon", coordinates: [square(135, 36, 1.123456789)] } },
+  ],
+};
+const towns = [
+  { lon: 135.6, lat: 36.4, size: "small" },
+  { lon: 136.5, lat: 35.5, size: "large" },
+];
+const HH_BREAKS = [0, 50, 1000, 10000, 100000];
+
+test("a FeatureCollection gives a geometry column, and polygon() draws it with holes", () => {
+  const spec = plot(districts).polygon({ fill: "hh", tooltip: "name" }).spec();
+  assert.equal(spec.layers[0].mapping.geometry, "geometry", "the geometry column is the default");
+  const geometry = spec.data[0].columns.geometry;
+  assert.equal(geometry.type, "geometry");
+  assert.equal(geometry.values[2].coordinates[0][1][0], 136.12346, "coordinates keep 5 decimals");
+  const f = figure(spec, { document });
+  const g = f.panels[0].g.querySelector('g[aria-label="geo"]');
+  assert.equal(g.getAttribute("fill-rule"), "evenodd");
+  assert.equal(g.querySelectorAll("path").length, 3);
+  assert.deepEqual(f.home[0].x, [134.875, 137.625], "the domain covers every polygon (135 to 137.5), with 5% space");
+  const at = (lon, lat) => [f.panels[0].plot.scale("x").apply(lon), f.panels[0].plot.scale("y").apply(lat)];
+  assert.equal(pick(f, 0, ...at(135.1, 35.1)).header, "A");
+  assert.equal(pick(f, 0, ...at(135.5, 35.5)), null, "a hole is not part of the polygon");
+  assert.equal(pick(f, 0, ...at(137.3, 35.3)).header, "B", "every part of a multipolygon");
+  assert.match(pick(f, 0, ...at(135.1, 35.1)).rows[0].value, /^10$/);
+});
+
+test("polygon checks its geometry", () => {
+  const line = { type: "FeatureCollection", features: [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [[0, 0], [1, 1]] } }] };
+  assert.throws(() => renderSVG(plot(line).polygon().spec()), /geometry must be Polygon or MultiPolygon, not LineString/);
+  assert.throws(() => renderSVG(plot(districts).polygon({ fill: "geometry" }).spec()), /is a geometry column; use it as geometry/);
+  assert.throws(() => renderSVG(plot(districts).polygon({ geometry: "name" }).spec()), /geometry must be a geometry column/);
+  const outline = renderSVG(plot(districts).polygon({ color: "gray", size: 1 }).spec());
+  assert.match(outline, /fill="none"/, "without fill: outlines only");
+});
+
+test("fill and color are two scales with two legends; only the color legend toggles", () => {
+  const p = plot(districts).polygon({ fill: "hh" }).point({ data: towns, x: "lon", y: "lat", color: "size" }).fill({ breaks: HH_BREAKS });
+  const f = figure(p.spec(), { document });
+  assert.equal(f.legend.kind, "stack");
+  assert.deepEqual(f.legend.parts.map((part) => part.model.kind), ["swatches", "steps"]);
+  assert.deepEqual(f.legend.items.map((it) => it.value), ["large", "small"], "the items are the color keys");
+  assert.equal(f.svg.querySelectorAll(".pt-key").length, 2);
+  assert.ok(f.legend.parts[1].y >= f.legend.parts[0].model.height, "the second legend is below the first");
+  const constant = plot(districts).polygon({ fill: "#DDDDDD" }).spec();
+  assert.match(renderSVG(constant), /fill="#DDDDDD"/);
+  assert.throws(() => renderSVG(plot(districts).polygon({ fill: "nocolor" }).spec()), /not a column or a color/);
+});
+
+test("breaks make a binned scale: classes closed on the left, colors set by the breaks", () => {
+  const f = figure(plot(districts).polygon({ fill: "hh" }).fill({ breaks: HH_BREAKS, scheme: "matcha" }).spec(), { document });
+  const { fill } = f;
+  assert.equal(fill.kind, "binned");
+  assert.equal(fill.colors.length, 5);
+  assert.equal(fill.apply(10), fill.colors[0]);
+  assert.equal(fill.apply(50), fill.colors[1], "a value at a break is in the class above");
+  assert.equal(fill.apply(250000), fill.colors[4], "the last class is open");
+  assert.equal(fill.apply(-1), f.theme.muted);
+  assert.equal(fill.apply(null), f.theme.muted);
+  const steps = f.legend;
+  assert.equal(steps.kind, "steps");
+  assert.deepEqual(steps.texts, ["0", "50", "1,000", "10,000", "100,000"]);
+  assert.equal(f.svg.querySelectorAll(".pt-legend rect").length, 5);
+  const named = figure(plot(districts).polygon({ fill: "hh" }).fill({ breaks: [0, 50], labels: ["under 50", "50 or more"], values: ["yellow", "red"] }).spec(), { document });
+  assert.deepEqual(named.legend.texts, ["under 50", "50 or more"]);
+  assert.equal(named.fill.apply(60), named.theme.colors.red);
+  const clamped = figure(plot(districts).polygon({ fill: "hh" }).fill({ breaks: [20, 50], clamp: true }).spec(), { document });
+  assert.equal(clamped.fill.apply(10), clamped.fill.colors[0]);
+  assert.throws(() => base.color({ breaks: [1, 1] }), /breaks must increase/);
+  assert.throws(() => base.color({ breaks: [0, 1], mid: 0.5 }), /mid does not apply with breaks/);
+  assert.throws(() => base.color({ breaks: [0, 1], values: ["red"] }), /one color per break/);
+  assert.throws(() => renderSVG(base.line().color({ breaks: [0, 1] }).spec()), /breaks apply to a number or time column/);
+});
+
+test('coord("geo") gives equal distance per px in x and y, also after a zoom', () => {
+  const p = plot(districts).polygon({ fill: "hh" }).point({ data: towns, x: "lon", y: "lat" }).coord("geo");
+  const f = figure(p.spec(), { document });
+  const box = f.layout.panels[0];
+  assert.ok(Math.abs(box.innerH / box.innerW - geoAspect(f.home[0])) < 0.01, "the panel has the shape of the map");
+  const kmPerPx = (d, b) => [((d.x[1] - d.x[0]) * Math.cos((((d.y[0] + d.y[1]) / 2) * Math.PI) / 180)) / b.innerW, (d.y[1] - d.y[0]) / b.innerH];
+  const zoomed = f.home.map((d) => ({ ...d, x: [135.2, 135.4] })); // a narrow box: the drawn y grows
+  const z = figure(p.spec(), { document, domains: zoomed });
+  const drawn = equalize(z.domains[0], box.innerW, box.innerH);
+  const [ex, ey] = kmPerPx(drawn, box);
+  assert.ok(Math.abs(ex - ey) / ey < 1e-9, `equal scale: ${ex} ${ey}`);
+  assert.deepEqual(z.domains[0], zoomed[0], "the stored domain does not change");
+  const svg = renderSVG(p.spec());
+  assert.match(svg, />136.0°E</);
+  assert.match(svg, />36.0°N</);
+  assert.equal(f.ns.labels.x, null, "no axis titles by default");
+  assert.throws(() => renderSVG(p.facet("hh", { free: "y" }).spec()), /facet free must be "both" or unset/);
+  assert.throws(() => renderSVG(plot(rows, { x: "t", y: "v" }).line().x({ type: "log" }).coord("geo").spec()), /x and y must be number axes/);
+  assert.throws(() => base.coord("mercator"), /unknown type "mercator"/);
 });
 
 test("a method returns a new builder and keeps the old one", () => {

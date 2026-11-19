@@ -70,7 +70,7 @@ draw(plot(rows, { x: "time", y: "value", color: "sensor" }).line().facet("indica
 ### Data
 
 - Use long format: one row per observation, one column per variable.
-- Python takes a pandas DataFrame or a list of dicts. JavaScript takes an array of row objects.
+- Python takes a pandas DataFrame (also a GeoDataFrame) or a list of dicts. JavaScript takes an array of row objects. Both take a GeoJSON FeatureCollection.
 - A time-zone-aware datetime column shows its local clock time.
 - To set the order of categories, use a pandas categorical column or `x(limits=[...])`.
 
@@ -84,6 +84,9 @@ draw(plot(rows, { x: "time", y: "value", color: "sensor" }).line().facet("indica
 | Set ticks and their text | `x(type="log", breaks=[1, 1.5, 2, 3, 5, 10])`; `y(breaks=[0, 50], labels=["none", "50"])` |
 | Colors side by side in a category | `point(position="dodge")`, `segment(..., position="dodge")`: on a category x or y |
 | Name lines at their ends | `line(direct=True)` with `theme(legend="none")` |
+| Areas from GeoJSON or a GeoDataFrame | `plot(geojson).polygon(fill="households", tooltip="name")`; outlines only: `polygon()` |
+| Classes with a stepped legend | `fill(breaks=[0, 50, 1000, 10000])`; class names: `labels=[...]`; the same for `color()` |
+| Maps | `coord("geo")`: x = longitude, y = latitude, equal distance per px, degree labels |
 | Category colors | `color(palette="sakura")`, or `color(values={"a": "red", "b": "#123456"})` |
 | Number colors | `color(scheme="ai")`; diverging: `color(scheme="aiaka", mid=0)` |
 

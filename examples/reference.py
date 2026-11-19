@@ -31,12 +31,16 @@ LAYER_DOC = {
     "text": "Text labels at (x, y).",
     "errorbar": "Vertical error bars from ymin to ymax, with caps.",
     "box": "Box plots of y per x: quartiles, whiskers at 1.5 IQR, outliers.",
+    "polygon": "Areas of GeoJSON Polygon and MultiPolygon geometries (holes stay empty), for choropleths and outlines. "
+    "Without geometry: the column named geometry. Without fill: outlines only.",
 }
 
 CHANNEL_DOC = {
     "x": "Horizontal position",
     "y": "Vertical position",
-    "color": "Stroke of lines; fill of points, bars, areas and cells",
+    "color": "Stroke of lines; fill of points, bars, areas and cells; outline of polygons",
+    "fill": "Fill of polygons (the fill scale, with its own legend)",
+    "geometry": "A geometry column: GeoJSON geometries, a GeoDataFrame geometry column, or the geometry of a FeatureCollection",
     "group": "Splits lines and areas without a color",
     "tooltip": "An extra column in the hover label",
     "label": "The text of a text layer",
@@ -75,7 +79,11 @@ PLOT = [
         "plot(data, **mapping) → Plot",
         "Starts a plot. The mappings apply to every layer that accepts the channel.",
         [
-            ("data", "DataFrame | list[dict]", "Long-format data. JS: an array of row objects."),
+            (
+                "data",
+                "DataFrame | list[dict] | GeoJSON",
+                "Long-format data. JS: an array of row objects. A GeoJSON FeatureCollection gives one row per feature (column geometry).",
+            ),
             (
                 "**mapping",
                 "channel=column",
@@ -120,19 +128,35 @@ METHODS = [
         ],
     ),
     (
-        "color(values=None, palette=None, scheme=None, limits=None, mid=None, clamp=False)",
-        "The color scale.",
+        "color(values=None, palette=None, scheme=None, limits=None, mid=None, clamp=False, breaks=None, labels=None)  ·  fill(...)",
+        "The color scales: color() for the color channel, fill() for the fill of polygons. Each has its own legend.",
         [
-            ("values", "list | dict", "Colors in order, or category → color. Theme color names or CSS colors."),
+            (
+                "values",
+                "list | dict",
+                "Colors in order, or category → color. Theme color names or CSS colors. With breaks: one color per break.",
+            ),
             ("palette", "str", "Category colors: " + ", ".join(THEMES["palettes"])),
             ("scheme", "str | list", "Number colors: " + ", ".join(THEMES["schemes"]) + ", or a d3 scheme (viridis, magma, …)"),
             ("limits", "[low, high] | list", "The range of a number scale (None keeps the data bound), or the categories and their order"),
             ("mid", "number", "Diverging: the value at the center color"),
-            ("clamp", "bool", "Values outside the limits take the end color (default: muted gray)"),
+            ("clamp", "bool", "Values outside the limits (or below the first break) take the end color (default: muted gray)"),
+            (
+                "breaks",
+                "list",
+                "Classes of a number or time column: [b0, b1), …, [bn, ∞), for example [0, 50, 1000, 10000]. A stepped legend.",
+            ),
+            ("labels", "list[str]", "With breaks: a name per class, shown on the steps of the legend"),
         ],
     ),
     (
-        "labels(title=, subtitle=, caption=, x=, y=, color=)",
+        'coord("geo")',
+        "Map coordinates: x is the longitude and y the latitude, at the same distance per px in x and y. The panels take "
+        "the shape of the map; tick labels are in degrees.",
+        [],
+    ),
+    (
+        "labels(title=, subtitle=, caption=, x=, y=, color=, fill=)",
         "The titles. None removes one. A missing axis title is the column name.",
         [],
     ),

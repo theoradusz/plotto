@@ -7,6 +7,7 @@ per hour).
     python examples/make_datasets.py
 """
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -110,7 +111,100 @@ def dense():
     return pd.DataFrame({"x": xy[:, 0], "y": xy[:, 1], "cluster": [f"cluster {c + 1}" for c in cluster]})
 
 
+NAMES = [
+    "Aoba",
+    "Asahi",
+    "Fujimi",
+    "Hikari",
+    "Honcho",
+    "Kawabe",
+    "Kita",
+    "Midori",
+    "Minami",
+    "Mori",
+    "Nagisa",
+    "Nishi",
+    "Oka",
+    "Sakura",
+    "Shin",
+    "Shiro",
+    "Sora",
+    "Taka",
+    "Tani",
+    "Umi",
+    "Wakaba",
+    "Yama",
+    "Yuki",
+    "Hama",
+    "Ishi",
+    "Kaze",
+    "Matsu",
+    "Nami",
+    "Tsuki",
+    "Hoshi",
+]
+
+
+def districts():
+    """30 made-up districts on a jittered 6 × 5 grid near 139.75°E 35.5°N (GeoJSON), with households and the
+    households without water after a made-up earthquake near the south-west. District 15 has a lake (a hole) and
+    district 6 an island (a MultiPolygon). Its own generator, so the CSV files do not change. Also writes
+    district_towns.csv: one town per district, at its centre."""
+    g = np.random.default_rng(11)
+    nx, ny = 6, 5
+    lon = np.linspace(139.0, 140.5, nx + 1)
+    lat = np.linspace(35.0, 36.0, ny + 1)
+    # Shared corners and edge midpoints, jittered inside the grid so that the districts tile without gaps.
+    corner = {
+        (i, j): (lon[i] + (g.uniform(-0.06, 0.06) if 0 < i < nx else 0), lat[j] + (g.uniform(-0.04, 0.04) if 0 < j < ny else 0))
+        for i in range(nx + 1)
+        for j in range(ny + 1)
+    }
+    mid = {}
+    for (i, j), (x, y) in corner.items():
+        for di, dj in ((1, 0), (0, 1)):
+            if (i + di, j + dj) in corner:
+                x2, y2 = corner[(i + di, j + dj)]
+                edge = 0 < (i if di == 0 else j) < (nx if di == 0 else ny)
+                bend = g.uniform(-0.03, 0.03) if edge else 0
+                mid[(i, j, di, dj)] = ((x + x2) / 2 + bend * dj, (y + y2) / 2 + bend * di)
+    features, towns = [], []
+    for k, (j, i) in enumerate((j, i) for j in range(ny) for i in range(nx)):
+        ring = [
+            corner[(i, j)],
+            mid[(i, j, 1, 0)],
+            corner[(i + 1, j)],
+            mid[(i + 1, j, 0, 1)],
+            corner[(i + 1, j + 1)],
+            mid[(i, j + 1, 1, 0)],
+            corner[(i, j + 1)],
+            mid[(i, j, 0, 1)],
+            corner[(i, j)],
+        ]
+        ring = [[round(x, 4), round(y, 4)] for x, y in ring]
+        cx, cy = np.mean([p[0] for p in ring[:-1]]), np.mean([p[1] for p in ring[:-1]])
+        geometry = {"type": "Polygon", "coordinates": [ring]}
+        if k == 14:  # a lake: a hole in the district
+            lake = [[cx - 0.05, cy - 0.03], [cx + 0.06, cy - 0.04], [cx + 0.07, cy + 0.03], [cx - 0.03, cy + 0.05], [cx - 0.05, cy - 0.03]]
+            geometry["coordinates"].append([[round(x, 4), round(y, 4)] for x, y in lake])
+        if k == 5:  # an island off the east coast
+            island = [[140.56, 35.05], [140.66, 35.08], [140.63, 35.16], [140.55, 35.13], [140.56, 35.05]]
+            geometry = {"type": "MultiPolygon", "coordinates": [[ring], [island]]}
+        households = int(g.integers(2_000, 60_000))
+        distance = np.hypot((cx - 139.35) * np.cos(np.radians(35.5)), cy - 35.25)
+        out = int(households * min(1.0, np.exp(-distance / 0.18) * g.uniform(0.3, 1.6)))
+        name = NAMES[k]
+        features.append(
+            {"type": "Feature", "properties": {"name": name, "households": households, "without_water": out}, "geometry": geometry}
+        )
+        towns.append({"name": name, "lon": round(cx, 4), "lat": round(cy, 4), "households": households})
+    (OUT / "districts.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+    print(f"districts.geojson: {len(features)} features")
+    write("district_towns", pd.DataFrame(towns))
+
+
 if __name__ == "__main__":
     OUT.mkdir(exist_ok=True)
     for make in (sensor_week, spectra, calibration, heatmap, monthly, daily_range, events, dense):
         write(make.__name__, make())
+    districts()

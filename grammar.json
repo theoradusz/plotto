@@ -35,18 +35,21 @@
     "tile": { "channels": ["x", "y", "color", "tooltip"], "options": ["alpha"], "requires": ["x", "y", "color"] },
     "text": { "channels": ["x", "y", "label", "color"], "options": ["size", "alpha"], "requires": ["x", "y", "label"] },
     "errorbar": { "channels": ["x", "ymin", "ymax", "color"], "options": ["size", "alpha", "position"], "requires": ["x", "ymin", "ymax"] },
-    "box": { "channels": ["x", "y", "color"], "options": ["alpha"], "requires": ["x", "y"] }
+    "box": { "channels": ["x", "y", "color"], "options": ["alpha"], "requires": ["x", "y"] },
+    "polygon": { "channels": ["geometry", "fill", "color", "tooltip"], "options": ["size", "alpha"], "requires": ["geometry"] }
   },
   "scales": {
     "x": ["type", "limits", "format", "breaks", "labels"],
     "y": ["type", "limits", "format", "breaks", "labels"],
-    "color": ["values", "palette", "scheme", "limits", "mid", "clamp"]
+    "color": ["values", "palette", "scheme", "limits", "mid", "clamp", "breaks", "labels"],
+    "fill": ["values", "palette", "scheme", "limits", "mid", "clamp", "breaks", "labels"]
   },
   "scaleTypes": ["linear", "log", "time", "category"],
   "facet": ["free", "ncol"],
   "grid": ["free"],
   "free": ["x", "y", "both"],
-  "labels": ["title", "subtitle", "x", "y", "color", "caption"],
+  "labels": ["title", "subtitle", "x", "y", "color", "fill", "caption"],
+  "coord": ["geo"],
   "theme": ["format", "width", "height", "size", "legend", "aspect"],
   "legend": ["right", "bottom", "none"],
   "info": ["position"],

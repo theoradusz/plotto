@@ -37,8 +37,10 @@ export function makeView(ctx, layer, rows, hidden) {
     cols = stacked(b, sizeOf(b), o.position ?? "stack");
   } else if (layer.type === "density") cols = density(raw, n);
   else if (layer.type === "smooth") cols = smooth(raw, n, o);
-  if (cols !== raw) source = null;
-  const view = { cols, n: cols === raw ? n : sizeOf(cols), rows: source };
+  else if (layer.type === "polygon") cols = { ...raw, ...bounds(raw.geometry) };
+  const derived = cols !== raw && layer.type !== "polygon"; // a statistic makes new rows; a polygon keeps its rows
+  if (derived) source = null;
+  const view = { cols, n: derived ? sizeOf(cols) : n, rows: source };
   if (o.position === "dodge" && DODGE.includes(layer.type)) view.shift = dodgeShift(ctx, layer, cols, view.n);
   view.hover = hoverOf(ns, layer, view);
   return view;
@@ -57,6 +59,27 @@ function dodgeShift({ kind, colorLevels, colorKind }, layer, cols, n) {
   if (colorKind !== "ordinal") throw new Error(`${where}: dodge needs color mapped to a category column`);
   const slots = colorLevels.length;
   return { axis, frac: Array.from({ length: n }, (_, i) => (colorLevels.indexOf(cols.color[i]) + 0.5) / slots - 0.5), slots };
+}
+
+// The bounding box of each geometry (xmin, xmax, ymin, ymax), which trains the axis domains.
+// A geometry object keeps its box, so a redraw (legend click) does not compute it again.
+const BOXES = new WeakMap();
+function bounds(geometries) {
+  const out = { xmin: [], xmax: [], ymin: [], ymax: [] };
+  for (const g of geometries) {
+    if (g && !BOXES.has(g)) {
+      let [x0, x1, y0, y1] = [Infinity, -Infinity, Infinity, -Infinity];
+      const walk = (c) => {
+        if (typeof c[0] === "number") [x0, x1, y0, y1] = [Math.min(x0, c[0]), Math.max(x1, c[0]), Math.min(y0, c[1]), Math.max(y1, c[1])];
+        else for (const part of c) walk(part);
+      };
+      walk(g.coordinates);
+      BOXES.set(g, x0 <= x1 ? [x0, x1, y0, y1] : [null, null, null, null]);
+    }
+    const [x0, x1, y0, y1] = g ? BOXES.get(g) : [null, null, null, null];
+    out.xmin.push(x0), out.xmax.push(x1), out.ymin.push(y0), out.ymax.push(y1);
+  }
+  return out;
 }
 
 // The hover anchor (hx, hy) and the label fields of a view, or null for layers without hover.
@@ -94,6 +117,10 @@ function hoverOf(ns, layer, { cols, rows }) {
     }
     case "box":
       return { hx: cols.x, hy: cols.y, fields: [xField, field(Y, "y", cols.y)] };
+    case "polygon": {
+      const value = (ch) => (layer.channels[ch]?.column ? [field(ns.labels[ch] ?? layer.channels[ch].column, null, cols[ch])] : []);
+      return { fields: [...value("fill"), ...value("color")], header: tooltip[0] ?? null, polygon: true };
+    }
     default:
       return null;
   }

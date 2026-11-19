@@ -130,6 +130,16 @@ export const LAYERS = {
     return [rule, cap("ymin"), cap("ymax")];
   },
 
+  // Areas of GeoJSON polygons, through the x and y scales (no projection). Without fill: outlines in muted; with fill:
+  // thin outlines in the background color, which separate the areas. Holes are cut (even-odd rule).
+  polygon: (c) => {
+    const fill = c.fills(null);
+    const stroke = c.colors(fill ? c.theme.background : c.theme.muted);
+    const strokeWidth = c.options.size ?? (fill ? 0.5 : 0.6);
+    const style = fill ? { fill, fillOpacity: c.options.alpha ?? 1 } : { fill: "none", strokeOpacity: c.options.alpha ?? 1 };
+    return [Plot.geo(c.index, { geometry: c.v("geometry"), ...style, stroke, strokeWidth, strokeLinejoin: "round", render: evenOdd, clip })];
+  },
+
   // One Tukey box per category, in the series color: a light box from q1 to q3, a bold median, whiskers with caps,
   // and the outliers as small dots (they blend with jittered points drawn on top).
   box: (c) => {
@@ -240,6 +250,13 @@ function dodgeRender(c) {
     for (const k of keys) if (values[k]) moved[k] = Float64Array.from(values[k], (v, i) => v + frac[i] * step);
     return next(index, scales, moved, dimensions, context);
   };
+}
+
+// Holes of a polygon (inner rings) stay empty, whatever the direction of their rings.
+function evenOdd(index, scales, values, dimensions, context, next) {
+  const g = next(index, scales, values, dimensions, context);
+  g.setAttribute("fill-rule", "evenodd");
+  return g;
 }
 
 // Two render transforms in a row: a runs first, then b, then the mark.

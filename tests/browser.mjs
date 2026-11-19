@@ -24,14 +24,24 @@ for (const [r, row] of ["small", "medium", "large"].entries()) {
   for (const [m, model] of ["severity", "reference"].entries()) forest.push({ row, model, v: 1 + r + m, lo: 0.5 + r, hi: 2 + r + m });
 }
 
+const square = (x, y, d) => [[x, y], [x + d, y], [x + d, y + d], [x, y + d], [x, y]];
+const districts = {
+  type: "FeatureCollection",
+  features: [
+    { type: "Feature", properties: { name: "A", hh: 10 }, geometry: { type: "Polygon", coordinates: [square(135, 35, 1), square(135.25, 35.25, 0.5)] } },
+    { type: "Feature", properties: { name: "B", hh: 2000 }, geometry: { type: "MultiPolygon", coordinates: [[square(136, 35, 1)], [square(137.2, 35.2, 0.3)]] } },
+  ],
+};
+
 const specs = [
   plot(rows, { x: "time", y: "v", color: "series" }).line().hline({ y: 0 }).facet("sensor", { free: "y" }).labels({ title: "Test" }).info({ site: "hayama", run: 15 }).spec(),
   plot(spectra, { x: "wl", y: "a", color: "hour", group: "hour" }).line().spec(),
   plot(rows.slice(0, 60), { x: "time", y: "v", color: "series" }).line().spec(),
   plot(forest, { x: "v", y: "row", color: "model" }).segment({ x: "lo", xend: "hi", yend: "row", position: "dodge" }).point({ position: "dodge" }).x({ type: "log", breaks: [0.5, 1, 2, 5] }).spec(),
   plot(rows.slice(0, 120), { x: "time", y: "v", color: "series" }).line({ direct: true }).labels({ caption: "A caption long enough to wrap: ".repeat(8) }).theme("pastel", { legend: "none" }).spec(),
+  plot(districts).polygon({ fill: "hh", tooltip: "name" }).point({ data: [{ lon: 135.1, lat: 35.9, k: "town" }], x: "lon", y: "lat", color: "k" }).fill({ breaks: [0, 50, 1000] }).coord("geo").spec(),
 ];
-const modes = [true, true, false, true, false]; // plots 2 and 4 are static
+const modes = [true, true, false, true, false, true]; // plots 2 and 4 are static
 
 const dir = mkdtempSync(join(tmpdir(), "plotto-test-"));
 const js = (await bundle({ cdn: false })).replace(/<\/script/gi, "<\\/script");
@@ -224,6 +234,21 @@ try {
   await sleep(150);
   const dodgeTip = await b.evaluate("document.querySelector('#p3 .pt-tip').textContent");
   check("hover on a dodged point shows that point", dodgeTip.includes("reference") && !dodgeTip.includes("severity"), dodgeTip);
+
+  // A map: hover on an area shows its name; a zoom box keeps the same distance per px in x and y.
+  await b.evaluate("document.getElementById('p5').scrollIntoView()");
+  const inA = JSON.parse(await b.evaluate("(() => { const st = ctl[5].state, p = st.panels[0], b = st.layout.panels[0], r = st.svg.getBoundingClientRect(), k = r.width / st.W; return JSON.stringify([r.left + (b.x + p.plot.scale('x').apply(135.1)) * k, r.top + (b.y + p.plot.scale('y').apply(35.1)) * k]); })()"));
+  await b.mouse("mouseMoved", inA[0] - 1, inA[1], { buttons: 0 });
+  await b.mouse("mouseMoved", ...inA, { buttons: 0 });
+  await sleep(150);
+  const mapTip = await b.evaluate("document.querySelector('#p5 .pt-tip').textContent");
+  check("hover on an area shows its tooltip and value", mapTip.startsWith("A") && mapTip.includes("10"), mapTip);
+  const p5 = JSON.parse(await b.evaluate("JSON.stringify(ctl[5].state.layout.panels[0])"));
+  await drag(5, [p5.x + p5.ml + 40, p5.y + 40], [p5.x + p5.ml + 140, p5.y + 60]);
+  const equal = JSON.parse(await b.evaluate(`(() => { const p = ctl[5].state.panels[0], b = ctl[5].state.layout.panels[0];
+    const [x0, x1] = p.plot.scale('x').domain, [y0, y1] = p.plot.scale('y').domain;
+    return JSON.stringify([((x1 - x0) * Math.cos((y0 + y1) / 2 * Math.PI / 180)) / b.innerW, (y1 - y0) / b.innerH, ctl[5].state.domains !== ctl[5].state.home]); })()`));
+  check("a zoom box on a map keeps the same distance per px in x and y", equal[2] && Math.abs(equal[0] - equal[1]) / equal[1] < 1e-9, JSON.stringify(equal));
 
   check("no page errors", b.errors.length === 0, b.errors.join("; "));
 } finally {
