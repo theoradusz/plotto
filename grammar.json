@@ -13,7 +13,8 @@
     "method": ["lm", "loess"],
     "span": "number",
     "band": "boolean",
-    "direct": "boolean"
+    "direct": "boolean",
+    "repel": "boolean"
   },
   "layers": {
     "line": { "channels": ["x", "y", "color", "group", "tooltip"], "options": ["size", "alpha", "dash", "summary", "direct"], "requires": ["x", "y"] },
@@ -33,7 +34,7 @@
     "rect": { "channels": ["xmin", "xmax", "ymin", "ymax", "color", "tooltip"], "options": ["alpha"], "requires": ["xmin", "xmax", "ymin", "ymax"] },
     "band": { "channels": ["xmin", "xmax", "ymin", "ymax", "color"], "options": ["alpha"], "requires": [], "inherit": false },
     "tile": { "channels": ["x", "y", "color", "tooltip"], "options": ["alpha"], "requires": ["x", "y", "color"] },
-    "text": { "channels": ["x", "y", "label", "color"], "options": ["size", "alpha"], "requires": ["x", "y", "label"] },
+    "text": { "channels": ["x", "y", "label", "color"], "options": ["size", "alpha", "repel"], "requires": ["x", "y", "label"] },
     "errorbar": { "channels": ["x", "ymin", "ymax", "color"], "options": ["size", "alpha", "position"], "requires": ["x", "ymin", "ymax"] },
     "box": { "channels": ["x", "y", "color"], "options": ["alpha"], "requires": ["x", "y"] },
     "polygon": { "channels": ["geometry", "fill", "color", "tooltip"], "options": ["size", "alpha"], "requires": ["geometry"] }
@@ -50,6 +51,9 @@
   "free": ["x", "y", "both"],
   "labels": ["title", "subtitle", "x", "y", "color", "fill", "caption"],
   "coord": ["geo"],
+  "coordOptions": ["scalebar", "north"],
+  "corners": ["bottom-left", "bottom-right", "top-left", "top-right"],
+  "inset": ["x", "y", "at"],
   "theme": ["format", "width", "height", "size", "legend", "aspect"],
   "legend": ["right", "bottom", "none"],
   "info": ["position"],

@@ -37,6 +37,7 @@ def plot(data, **mapping) -> Plot:
         "labels": {},
         "info": None,
         "coord": None,
+        "insets": [],
         "theme": {"style": "pastel"},
     }
     return Plot(state)
@@ -201,11 +202,38 @@ class Plot:
         return self._with(scales={**self._s["scales"], name: scale})
 
     def coord(self, type_, **options) -> Plot:
-        """Map coordinates: coord("geo") makes x (longitude) and y (latitude) the same distance per px."""
+        """Map coordinates: coord("geo") makes x (longitude) and y (latitude) the same distance per px.
+
+        scalebar, north: True (the default corner) or a corner ("bottom-left", ...), for a scale bar and a north arrow.
+        """
         if type_ not in GRAMMAR["coord"]:
             _fail("coord()", "type", type_, GRAMMAR["coord"])
-        _check_keys(options, [], "coord()")
-        return self._with(coord={"type": type_})
+        _check_keys(options, GRAMMAR["coordOptions"], "coord()")
+        coord = {"type": type_}
+        for key, corner in (("scalebar", "bottom-left"), ("north", "top-right")):
+            v = options.get(key)
+            if v is None or v is False:
+                continue
+            if v is not True and v not in GRAMMAR["corners"]:
+                _fail("coord()", key, v, ["true", *GRAMMAR["corners"]])
+            coord[key] = corner if v is True else v
+        return self._with(coord=coord)
+
+    def inset(self, **options) -> Plot:
+        """An inset: the panel area at (left, bottom, right, top shares of the panel) shows the extent x × y,
+        for example inset(x=[122.9, 131.4], y=[24.0, 28.6], at=[0.02, 0.6, 0.3, 0.98]). Each call adds one inset."""
+        _check_keys(options, GRAMMAR["inset"], "inset()")
+        x, y, at = options.get("x"), options.get("y"), options.get("at")
+        for name, v in (("x", x), ("y", y)):
+            if not isinstance(v, (list, tuple)) or len(v) != 2 or not all(_is_break(n) for n in v) or not to_value(v[0]) < to_value(v[1]):
+                raise ValueError(f"inset(): {name} must be [low, high], for example [122.9, 131.4]")
+        valid = isinstance(at, (list, tuple)) and len(at) == 4 and all(_is_number(n) and 0 <= n <= 1 for n in at)
+        if not valid or at[0] >= at[2] or at[1] >= at[3]:
+            raise ValueError(
+                "inset(): at must be [left, bottom, right, top] as shares of the panel (0 to 1), for example [0.02, 0.6, 0.3, 0.98]"
+            )
+        inset = {"x": [to_value(v) for v in x], "y": [to_value(v) for v in y], "at": [to_value(v) for v in at]}
+        return self._with(insets=[*self._s["insets"], inset])
 
     def labels(self, **options) -> Plot:
         _check_keys(options, GRAMMAR["labels"], "labels()")
@@ -282,6 +310,8 @@ class Plot:
             spec["info"] = s["info"]
         if s["coord"]:
             spec["coord"] = s["coord"]
+        if s["insets"]:
+            spec["insets"] = s["insets"]
         spec["theme"] = s["theme"]
         return spec
 
@@ -343,6 +373,10 @@ def _check_classes(scale, where):
     values = scale.get("values")
     if values is not None and (not isinstance(values, (list, tuple)) or len(values) != len(breaks)):
         raise ValueError(f"{where}: with breaks, values must be a list of one color per break (class)")
+
+
+def _is_number(v):
+    return isinstance(v, (int, float, np.integer, np.floating)) and not isinstance(v, (bool, np.bool_))
 
 
 def _is_break(v):

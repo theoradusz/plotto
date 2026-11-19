@@ -71,6 +71,7 @@ OPTION_DOC = {
     "span": ("0–1", "Share of the points in each loess fit (default 0.75)"),
     "band": ("bool", "The 95% band of a linear fit (default True)"),
     "direct": ("bool", "The name of each line (its group, else its color) right of its last point; with long names on 2 lines"),
+    "repel": ("bool", "Each label moves to a free place near its point, clear of other labels and points; leader lines for far labels"),
 }
 
 # (signature, description, [(parameter, type, description)])
@@ -150,10 +151,21 @@ METHODS = [
         ],
     ),
     (
-        'coord("geo")',
+        'coord("geo", scalebar=None, north=None)',
         "Map coordinates: x is the longitude and y the latitude, at the same distance per px in x and y. The panels take "
         "the shape of the map; tick labels are in degrees.",
-        [],
+        [
+            ("scalebar", "True | corner", 'A scale bar: True (bottom left) or "bottom-left", "bottom-right", "top-left", "top-right"'),
+            ("north", "True | corner", "A north arrow: True (top right) or a corner"),
+        ],
+    ),
+    (
+        "inset(x=, y=, at=)",
+        "An inset panel: the extent x × y in a box of each panel, for distant areas (islands). Each call adds one.",
+        [
+            ("x, y", "[low, high]", "The extent of the inset"),
+            ("at", "[left, bottom, right, top]", "The box, in shares of the panel (0 to 1) from its bottom left"),
+        ],
     ),
     (
         "labels(title=, subtitle=, caption=, x=, y=, color=, fill=)",

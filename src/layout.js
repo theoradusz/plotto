@@ -84,7 +84,8 @@ export function place({ ns, grid, kind, home, legend, info, direct, fonts, W, H 
   let innerH = area.h / grid.nrow;
   let ml, mb, mt, count, rotateX, wrapX;
   for (let pass = 0; pass < 2; pass++) {
-    count = { x: Math.max(2, innerW / (kind.x === "time" ? 110 : 75)), y: Math.max(3, innerH / 45) }; // at least 3 y ticks, so that a short panel keeps a readable scale
+    // Time and degree labels are wider: fewer x ticks. At least 3 y ticks, so that a short panel keeps a readable scale.
+    count = { x: Math.max(2, innerW / (kind.x === "time" || ns.scales.x?.degrees ? 110 : 75)), y: Math.max(3, innerH / 45) };
     ml = Array(grid.ncol).fill(0);
     mb = Array(grid.nrow).fill(0);
     rotateX = false;

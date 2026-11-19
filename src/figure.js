@@ -96,8 +96,13 @@ export function figure(spec, { document: doc = globalThis.document, width, domai
   for (const t of layout.texts) svg.append(svgText(doc, t.text, t.attrs));
   if (info) svg.append(drawInfo(doc, info, theme, layout.info));
   for (const s of layout.strips) svg.append(strip(doc, s, theme));
-  const state = { spec, ns, doc, svg, theme, fonts, grid, kind, geo, color, fill, ctx, legend, info, layout, home, direct, W, H };
-  state.domains = domains ?? home;
+  // Insets: after the main panels, in layout.panels and in the domains, each with the views of its panel.
+  const mainCount = grid.panels.length;
+  const insets = insetPanels(ns, kind, layout.panels);
+  layout.panels.push(...insets.map((s) => s.box));
+  const homeAll = [...home, ...insets.map((s) => s.domain)];
+  const state = { spec, ns, doc, svg, theme, fonts, grid, kind, geo, color, fill, ctx, legend, info, layout, home: homeAll, direct, insets, mainCount, W, H };
+  state.domains = domains ?? homeAll;
   state.hidden = hidden;
   state.panelLayer = svg.appendChild(svgElement(doc, "g", { class: "pt-panels" }));
   if (legend) state.legendG = svg.appendChild(placedLegend(state));
@@ -117,7 +122,8 @@ export function drawPanels(state) {
     state.filtered = hidden.size > 0;
   }
   state.panelLayer.replaceChildren();
-  state.panels = grid.panels.map((p, i) => drawPanel(state, p, i));
+  const panels = [...grid.panels, ...state.insets.map((s) => grid.panels[s.parent])];
+  state.panels = panels.map((p, i) => drawPanel(state, p, i));
   if (state.legendG) state.legendG.replaceWith((state.legendG = placedLegend(state)));
 }
 
@@ -136,9 +142,15 @@ function drawPanel(state, p, i) {
   // The band of a category, as in Observable Plot with padding 0.2.
   const band = (k, size) => (kind[k] === "category" ? (size / (domain[k].length + 0.2)) * 0.8 : 0);
   const bandwidth = { x: band("x", box.innerW), y: band("y", box.innerH) };
+  // The scale bar, the north arrow and the insets of a main panel: boxes that text(repel=true) keeps clear of.
+  const keys = state.geo && !box.inset ? mapKeyBoxes(state, drawn, box) : {};
+  const blocked = [
+    ...Object.values(keys),
+    ...state.insets.filter((s) => !box.inset && s.parent === i).map(({ box: b }) => ({ x: b.x - box.x, y: b.y - box.y, w: b.w, h: b.h })),
+  ].map(({ x, y, w, h }) => ({ x0: x, y0: y, x1: x + w, y1: y + h }));
   const layers = ns.layers.map((layer, li) => {
     const view = p.views[li];
-    const c = context({ view, layer, kind, color, fill, theme, fonts, domain, bandwidth, direct: state.direct });
+    const c = context({ view, layer, kind, color, fill, theme, fonts, domain, bandwidth, direct: box.inset ? null : state.direct, obstacles: () => obstacles(ns, p, theme), blocked });
     return { layer, view, c, marks: view.n ? LAYERS[layer.type](c) : [] };
   });
   const axis = (k) => {
@@ -151,9 +163,12 @@ function drawPanel(state, p, i) {
   const gridStyle = (minor) => ({ stroke: minor ? theme.gridMinor : theme.grid, strokeOpacity: 1, strokeWidth: minor ? 0.6 : 0.9 });
   const axisStyle = { tickSize: TICK.size, tickPadding: TICK.padding, fontSize: fonts.tick, stroke: theme.tick, fill: theme.muted, label: null };
   const marks = [];
-  if (kind.x !== "category") marks.push(Plot.gridX(ax.minor, gridStyle(true)), Plot.gridX(ax.major, gridStyle(false)));
-  if (kind.y !== "category") marks.push(Plot.gridY(ay.minor, gridStyle(true)), Plot.gridY(ay.major, gridStyle(false)));
+  // An inset covers the panel under it with the background, and has a frame instead of axes and grid lines.
+  if (box.inset) marks.push(Plot.frame({ fill: theme.background, stroke: null }));
+  if (kind.x !== "category" && !box.inset) marks.push(Plot.gridX(ax.minor, gridStyle(true)), Plot.gridX(ax.major, gridStyle(false)));
+  if (kind.y !== "category" && !box.inset) marks.push(Plot.gridY(ay.minor, gridStyle(true)), Plot.gridY(ay.major, gridStyle(false)));
   marks.push(...layers.flatMap((l) => l.marks));
+  if (box.inset) marks.push(Plot.frame({ stroke: theme.tick, strokeWidth: 1 }));
   if (box.showX) {
     const rotate = box.rotateX ? { tickRotate: -40, textAnchor: "end" } : {};
     const wrapped = (v) => box.wrapX.get(String(v))?.join("\n") ?? ax.format(v);
@@ -176,12 +191,82 @@ function drawPanel(state, p, i) {
   });
   const g = svgElement(doc, "g", { class: "pt-panel", "data-panel": i, transform: `translate(${box.x},${box.y})`, fill: "currentColor", "text-anchor": "middle" });
   for (const child of [...plot.childNodes]) if (child.nodeName.toLowerCase() !== "style") g.append(child);
+  if (state.geo && !box.inset) g.append(mapKeys(state, keys));
   state.panelLayer.append(g);
   return { g, plot, box, layers };
 }
 
+// The inset panels: for each main panel and each inset, a box at the inset's place in the panel, its extent and
+// the index of its panel. Insets need number or time axes.
+function insetPanels(ns, kind, boxes) {
+  if (!ns.insets.length) return [];
+  if (kind.x === "category" || kind.y === "category") throw new Error("inset(): x and y must be number or time axes, not category axes");
+  return boxes.flatMap((b, parent) =>
+    ns.insets.map(({ x, y, at: [l, bottom, r, top] }) => {
+      const [w, h] = [(r - l) * b.innerW, (top - bottom) * b.innerH];
+      const box = { x: b.x + b.ml + l * b.innerW, y: b.y + (1 - top) * b.innerH, w, h, ml: 0, mr: 0, mb: 0, innerW: w, innerH: h };
+      Object.assign(box, { count: { x: 2, y: 2 }, showX: false, showY: false, rotateX: false, wrapX: new Map(), inset: true });
+      return { parent, box, domain: { x, y } };
+    }),
+  );
+}
+
+// The points of the point layers of a panel, which text(repel=true) keeps clear of: data arrays and radii.
+function obstacles(ns, p, theme) {
+  return ns.layers.flatMap((layer, li) => (layer.type === "point" && p.views[li].n ? [{ x: p.views[li].cols.x, y: p.views[li].cols.y, r: layer.options.size ?? theme.point }] : []));
+}
+
+// The places of the scale bar and the north arrow of a map panel (coord("geo", scalebar=, north=)), in the corners
+// that the spec sets, 0.8 em inside the frame, in panel px. The bar is a round length (1, 2 or 5 × 10^k km) near a
+// fifth of the panel width.
+const KM_PER_DEGREE = 111.32;
+function mapKeyBoxes(state, drawn, box) {
+  const { fonts, ns } = state;
+  const { scalebar, north } = ns.coord;
+  const m = fonts.base * 0.8;
+  const at = (corner, w, h) => ({ x: box.ml + (corner.endsWith("left") ? m : box.innerW - m - w), y: corner.startsWith("top") ? m : box.innerH - m - h, w, h });
+  const out = {};
+  if (scalebar) {
+    const phi = ((drawn.y[0] + drawn.y[1]) / 2) * (Math.PI / 180);
+    const kmPerPx = ((drawn.x[1] - drawn.x[0]) * KM_PER_DEGREE * Math.cos(phi)) / box.innerW;
+    const target = kmPerPx * box.innerW * 0.2;
+    const e = 10 ** Math.floor(Math.log10(target));
+    const km = [5, 2, 1].map((k) => k * e).find((v) => v <= target);
+    out.scalebar = { ...at(scalebar, km / kmPerPx, fonts.tick * 1.3 + 5), km };
+  }
+  if (north) out.north = at(north, fonts.tick, fonts.tick * 2.5);
+  return out;
+}
+
+function mapKeys(state, keys) {
+  const { doc, theme, fonts } = state;
+  const g = svgElement(doc, "g", { class: "pt-map-keys", "font-size": fonts.tick, fill: theme.ink });
+  const halo = { stroke: theme.background, "stroke-width": 3, "stroke-linejoin": "round", "paint-order": "stroke" };
+  if (keys.scalebar) {
+    const { x, y, w, h, km } = keys.scalebar;
+    const base = y + h - 1;
+    const bar = svgElement(doc, "g", { class: "pt-scalebar", "data-km": km, "data-px": w });
+    const line = `M${x},${base - 4}V${base}H${x + w}V${base - 4}`;
+    bar.append(svgElement(doc, "path", { d: line, fill: "none", stroke: theme.background, "stroke-width": 4, "stroke-linejoin": "round" }));
+    bar.append(svgElement(doc, "path", { d: line, fill: "none", stroke: theme.ink, "stroke-width": 1.5 }));
+    bar.append(svgText(doc, `${d3.format(",~r")(km)} km`, { x: x + w / 2, y: base - 7, "text-anchor": "middle", ...halo }));
+    g.append(bar);
+  }
+  if (keys.north) {
+    const { x, y, w, h } = keys.north;
+    const cx = x + w / 2;
+    const arrow = svgElement(doc, "g", { class: "pt-north" });
+    arrow.append(svgText(doc, "N", { x: cx, y: y + fonts.tick * 0.85, "text-anchor": "middle", "font-weight": "bold", ...halo }));
+    const tip = y + fonts.tick * 1.15;
+    const points = `${cx},${tip} ${x + w},${y + h} ${cx},${y + h - w * 0.4} ${x},${y + h}`;
+    arrow.append(svgElement(doc, "polygon", { points, fill: theme.ink, stroke: theme.background, "stroke-width": 1, "stroke-linejoin": "round" }));
+    g.append(arrow);
+  }
+  return g;
+}
+
 // Channel accessors of one layer view in one panel, for layers.js. Time values become Date objects.
-function context({ view, layer, kind, color, fill, theme, fonts, domain, bandwidth, direct }) {
+function context({ view, layer, kind, color, fill, theme, fonts, domain, bandwidth, direct, obstacles, blocked }) {
   const axisOf = (ch) => (AXIS_CHANNELS.x.includes(ch) ? "x" : AXIS_CHANNELS.y.includes(ch) ? "y" : null);
   const cache = {};
   const v = (ch) => {
@@ -206,6 +291,8 @@ function context({ view, layer, kind, color, fill, theme, fonts, domain, bandwid
     domain,
     bandwidth,
     direct,
+    obstacles,
+    blocked,
   };
 }
 

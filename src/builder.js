@@ -14,7 +14,7 @@ export function plot(rows, mapping = {}) {
     if (!PLOT_CHANNELS.includes(ch)) fail("plot()", "channel", ch, PLOT_CHANNELS);
     needColumn(data[0], col, "plot()");
   }
-  return new Builder({ data, mapping, layers: [], facet: null, scales: {}, labels: {}, info: null, coord: null, theme: { style: "pastel" } });
+  return new Builder({ data, mapping, layers: [], facet: null, scales: {}, labels: {}, info: null, coord: null, insets: [], theme: { style: "pastel" } });
 }
 
 class Builder {
@@ -121,10 +121,34 @@ class Builder {
   }
 
   // Map coordinates: coord("geo") makes x (longitude) and y (latitude) the same distance per px.
+  // scalebar, north: true (the default corner) or a corner, for a scale bar and a north arrow.
   coord(type, options = {}) {
     if (!GRAMMAR.coord.includes(type)) fail("coord()", "type", type, GRAMMAR.coord);
-    checkKeys(options, [], "coord()");
-    return this.#with({ coord: { type } });
+    checkKeys(options, GRAMMAR.coordOptions, "coord()");
+    const coord = { type };
+    for (const [key, corner] of [["scalebar", "bottom-left"], ["north", "top-right"]]) {
+      const v = options[key];
+      if (v === undefined || v === null || v === false) continue;
+      if (v !== true && !GRAMMAR.corners.includes(v)) fail("coord()", key, v, ["true", ...GRAMMAR.corners]);
+      coord[key] = v === true ? corner : v;
+    }
+    return this.#with({ coord });
+  }
+
+  // An inset: the panel area at (left, bottom, right, top shares of the panel) shows the extent x × y, for example
+  // the Okinawa islands on a map of Japan. Each call adds one inset.
+  inset(options = {}) {
+    checkKeys(options, GRAMMAR.inset, "inset()");
+    const { x, y, at } = options;
+    for (const [name, v] of [["x", x], ["y", y]]) {
+      if (!Array.isArray(v) || v.length !== 2 || !v.every((n) => typeof n === "number" || n instanceof Date) || +v[0] >= +v[1]) {
+        throw new Error(`inset(): ${name} must be [low, high], for example [122.9, 131.4]`);
+      }
+    }
+    if (!Array.isArray(at) || at.length !== 4 || !at.every((n) => typeof n === "number" && n >= 0 && n <= 1) || at[0] >= at[2] || at[1] >= at[3]) {
+      throw new Error("inset(): at must be [left, bottom, right, top] as shares of the panel (0 to 1), for example [0.02, 0.6, 0.3, 0.98]");
+    }
+    return this.#with({ insets: [...this.#s.insets, { x: x.map(toValue), y: y.map(toValue), at: at.map(toValue) }] });
   }
 
   labels(options = {}) {
@@ -162,7 +186,7 @@ class Builder {
       if (col) used.forEach((set, i) => col in s.data[i].columns && set.add(col));
     }
     const data = s.data.map((t, i) => ({ columns: Object.fromEntries([...used[i]].map((c) => [c, t.columns[c]])) }));
-    return { version: 1, data, mapping: s.mapping, layers: s.layers, facet: s.facet, scales: s.scales, labels: s.labels, ...(s.info ? { info: s.info } : {}), ...(s.coord ? { coord: s.coord } : {}), theme: s.theme };
+    return { version: 1, data, mapping: s.mapping, layers: s.layers, facet: s.facet, scales: s.scales, labels: s.labels, ...(s.info ? { info: s.info } : {}), ...(s.coord ? { coord: s.coord } : {}), ...(s.insets.length ? { insets: s.insets } : {}), theme: s.theme };
   }
 }
 

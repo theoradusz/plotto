@@ -15,6 +15,9 @@ Write each change under "Unreleased". `scripts/release.sh` moves them to the new
 - A second color scale, `fill`, with `fill()` and its own legend: a map can color the areas by one column and the points by another.
 - `color(breaks=)` and `fill(breaks=)` make classes, for example households 0 / 50 / 1,000 / 10,000, with a stepped legend. `labels=` names the classes.
 - `coord("geo")`: map coordinates. x (longitude) and y (latitude) get the same distance per px, the panels take the shape of the map, and the ticks are in degrees.
+- `coord("geo", scalebar=True, north=True)` adds a scale bar and a north arrow, in a corner of each map panel.
+- `inset(x=, y=, at=)` draws a distant area (islands) at its own extent in a box of the panel. Zoom and pan leave it as it is.
+- `text(repel=True)` places labels clear of each other, of the points, of the insets and of the scale bar, with leader lines for labels that move far.
 
 ### Changed
 

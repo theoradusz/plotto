@@ -128,7 +128,15 @@ function attach(ctl, root, tip) {
     const k = ctl.state.W / r.width;
     return [(e.clientX - r.left) * k, (e.clientY - r.top) * k, k];
   };
-  const panelAt = (x, y) => ctl.state.layout.panels.findIndex((b) => x >= b.x + b.ml && x <= b.x + b.ml + b.innerW && y >= b.y && y <= b.y + b.innerH);
+  // The panel under a point: the insets (after the main panels) first, since they cover their panel.
+  const panelAt = (x, y) => {
+    const boxes = ctl.state.layout.panels;
+    for (let i = boxes.length - 1; i >= 0; i--) {
+      const b = boxes[i];
+      if (x >= b.x + b.ml && x <= b.x + b.ml + b.innerW && y >= b.y && y <= b.y + b.innerH) return i;
+    }
+    return -1;
+  };
 
   // A press in a panel starts a gesture. It becomes a drag (zoom box or pan) after DRAG_MIN px of movement;
   // a release before that is a click: it pins the hover label, or unpins it.
@@ -156,6 +164,7 @@ function attach(ctl, root, tip) {
       if (!pinned && !frame) frame = requestAnimationFrame(() => ((frame = null), showHover(x, y, k)));
       return;
     }
+    if (drag.i >= ctl.state.mainCount) return; // an inset keeps its extent: no zoom box, no pan
     if (ctl.mode === "pan") return pan(ctl, drag, x, y);
     const b = ctl.state.layout.panels[drag.i];
     const clampX = (v) => Math.max(b.x + b.ml, Math.min(b.x + b.ml + b.innerW, v));
@@ -337,7 +346,8 @@ function zoom(ctl, i, { x0, x1, y0, y1 }) {
 function step(ctl, factor) {
   ctl.clearHover?.();
   const state = ctl.state;
-  state.domains = state.domains.map((d) => {
+  state.domains = state.domains.map((d, i) => {
+    if (i >= state.mainCount) return d; // an inset keeps its extent
     const out = { ...d };
     for (const axis of ["x", "y"]) {
       const k = state.kind[axis];

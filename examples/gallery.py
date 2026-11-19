@@ -361,6 +361,27 @@ def map_layers():
     )
 
 
+def map_details():
+    """Map details: inset() shows a distant area (here the island) in a box of the panel at its own extent;
+    coord("geo", scalebar=True, north=True) adds a scale bar and a north arrow; text(repel=True) places the town
+    names clear of each other and of the points, with a leader line when a name has to move away."""
+    towns = load("district_towns").merge(
+        pd.DataFrame([f["properties"] for f in districts()["features"]])[["name", "without_water"]], on="name"
+    )
+    hit = towns[towns.without_water >= 1000]
+    return (
+        plot(districts())
+        .polygon(color="gray")
+        .point(data=hit, x="lon", y="lat", color="red", size=4)
+        .text(data=hit, x="lon", y="lat", label="name", repel=True)
+        .x(limits=[139, 140.5])
+        .y(limits=[35, 36])
+        .inset(x=[140.52, 140.7], y=[35.02, 35.18], at=[0.8, 0.02, 0.98, 0.25])
+        .coord("geo", scalebar=True, north=True)
+        .labels(title="Towns with 1,000 or more households without water", caption="The island is in the inset, bottom right.")
+    )
+
+
 # --- Styles and output ----------------------------------------------------------------------
 
 
@@ -521,6 +542,7 @@ PAGES = {
         "title": "Maps",
         "sections": {
             "Areas and points": [choropleth, map_layers],
+            "Insets, scale bar and labels": [map_details],
         },
     },
     "scales": {

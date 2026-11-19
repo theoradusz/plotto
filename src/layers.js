@@ -4,7 +4,9 @@
 import * as Plot from "@observablehq/plot";
 import * as d3 from "d3";
 import { DIRECT } from "./layout.js";
+import { placeLabels } from "./repel.js";
 import { boxStats } from "./stats.js";
+import { textWidth } from "./text.js";
 import { readable } from "./theme.js";
 
 const DASH = { solid: undefined, dashed: "6,4", dotted: "1.5,3", dashdot: "6,3,1.5,3" };
@@ -112,9 +114,12 @@ export const LAYERS = {
     return [Plot.rect(c.index, { x1, x2, y1, y2, ...fill, clip })];
   },
 
-  text: (c) => [
-    Plot.text(c.index, { x: c.v("x"), y: c.v("y"), text: c.v("label"), fontSize: c.options.size ?? c.fonts.tick, ...fillStyle(c, c.theme.ink), clip }),
-  ],
+  text: (c) => {
+    const size = c.options.size ?? c.fonts.tick;
+    const options = { x: c.v("x"), y: c.v("y"), text: c.v("label"), fontSize: size, ...fillStyle(c, c.theme.ink), clip };
+    if (c.options.repel) options.render = repelRender(c, size);
+    return [Plot.text(c.index, options)];
+  },
 
   errorbar: (c) => {
     const style = { ...strokeStyle(c, c.theme.ink), strokeWidth: c.options.size ?? 1.2, render: dodgeRender(c) };
@@ -249,6 +254,31 @@ function dodgeRender(c) {
     const moved = { ...values };
     for (const k of keys) if (values[k]) moved[k] = Float64Array.from(values[k], (v, i) => v + frac[i] * step);
     return next(index, scales, moved, dimensions, context);
+  };
+}
+
+// text(repel=true): each label moves to a free place near its anchor (repel.js), clear of the other labels, of their
+// anchors and of the points of the panel; a label far from its anchor gets a leader line.
+function repelRender(c, size) {
+  return (index, scales, values, dimensions, context, next) => {
+    const labels = c.v("label");
+    const anchors = Array.from(index, (i) => ({ x: values.x[i], y: values.y[i] })); // index can be a typed array
+    const sizes = Array.from(index, (i) => ({ w: textWidth(String(labels[i] ?? ""), size, false, c.theme.metrics), h: size * 1.2 }));
+    const points = c.obstacles().flatMap((o) => o.x.map((x, k) => ({ x: scales.x(x), y: scales.y(o.y[k]), r: o.r + 1 })));
+    const obstacles = [...anchors.map((a) => ({ ...a, r: 2 })), ...points.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))];
+    const { marginLeft, marginTop, marginRight, marginBottom, width, height } = dimensions;
+    const bounds = { x0: marginLeft, y0: marginTop, x1: width - marginRight, y1: height - marginBottom };
+    const spots = placeLabels(anchors, sizes, obstacles, bounds, size, c.blocked ?? []);
+    const [x, y] = [Float64Array.from(values.x), Float64Array.from(values.y)];
+    Array.from(index).forEach((i, k) => ([x[i], y[i]] = [spots[k].x, spots[k].y]));
+    const g = next(index, scales, { ...values, x, y }, dimensions, context);
+    const leaders = spots.flatMap((s, k) => (s.leader ? [`M${anchors[k].x},${anchors[k].y}L${s.leader.x},${s.leader.y}`] : []));
+    if (leaders.length) {
+      const path = context.document.createElementNS("http://www.w3.org/2000/svg", "path");
+      for (const [k, v] of Object.entries({ d: leaders.join(""), fill: "none", stroke: c.theme.muted, "stroke-width": 0.8 })) path.setAttribute(k, v);
+      g.insertBefore(path, g.firstChild);
+    }
+    return g;
   };
 }
 

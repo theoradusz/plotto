@@ -4,8 +4,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { test } from "node:test";
 import { JSDOM } from "jsdom";
 import { plot } from "../src/builder.js";
-import { figure } from "../src/figure.js";
+import { drawPanels, figure } from "../src/figure.js";
 import { pick } from "../src/hover.js";
+import { placeLabels } from "../src/repel.js";
 import { slideFigure } from "../src/interact.js";
 import { renderSVG } from "../src/render.mjs";
 import { equalize, geoAspect, ticks } from "../src/scales.js";
@@ -528,6 +529,73 @@ test('coord("geo") gives equal distance per px in x and y, also after a zoom', (
   assert.throws(() => renderSVG(p.facet("hh", { free: "y" }).spec()), /facet free must be "both" or unset/);
   assert.throws(() => renderSVG(plot(rows, { x: "t", y: "v" }).line().x({ type: "log" }).coord("geo").spec()), /x and y must be number axes/);
   assert.throws(() => base.coord("mercator"), /unknown type "mercator"/);
+});
+
+// --- insets, scale bar, north arrow, repel ---------------------------------------------------
+
+const islands = [
+  { lon: 135.2, lat: 35.2, name: "main 1", panel: "a" },
+  { lon: 135.8, lat: 35.7, name: "main 2", panel: "a" },
+  { lon: 135.4, lat: 35.5, name: "main 3", panel: "b" },
+  { lon: 127.7, lat: 26.2, name: "far", panel: "a" },
+];
+const islandMap = () => plot(islands, { x: "lon", y: "lat" }).point().x({ limits: [135, 136] }).y({ limits: [35, 36] }).coord("geo");
+
+test("an inset shows its own extent in each panel, keeps it on zoom, and stays after a redraw", () => {
+  const p = islandMap().inset({ x: [127, 128.5], y: [25.8, 26.8], at: [0.02, 0.62, 0.32, 0.98] });
+  const f = figure(p.spec(), { document });
+  assert.equal(f.mainCount, 1);
+  assert.equal(f.panels.length, 2);
+  const [main, inset] = f.layout.panels;
+  assert.ok(inset.inset && Math.abs(inset.x - (main.x + main.ml + 0.02 * main.innerW)) < 1e-9 && Math.abs(inset.innerW - 0.3 * main.innerW) < 1e-9);
+  const circles = (k) => f.panels[k].g.querySelectorAll('g[aria-label="dot"] circle').length;
+  assert.equal(circles(1), 4, "the inset draws every point of its panel; the far one is inside its extent");
+  const sx = f.panels[1].plot.scale("x");
+  const sy = f.panels[1].plot.scale("y");
+  assert.equal(pick(f, 1, sx.apply(127.7), sy.apply(26.2)).k, 3, "hover works in the inset");
+  assert.deepEqual(f.home[1], { x: [127, 128.5], y: [25.8, 26.8] });
+  f.hidden = new Set(["x"]);
+  drawPanels(f);
+  assert.equal(f.panels.length, 2, "a redraw (legend click, zoom) draws the inset again");
+  assert.equal(f.svg.querySelectorAll(".pt-panel").length, 2);
+  const faceted = figure(p.facet("panel").spec(), { document });
+  assert.equal(faceted.panels.length, 4, "two panels, each with its inset");
+  assert.throws(() => base.inset({ x: [1, 0], y: [0, 1], at: [0, 0, 0.5, 0.5] }), /x must be \[low, high\]/);
+  assert.throws(() => base.inset({ x: [0, 1], y: [0, 1], at: [0, 0, 1.5, 0.5] }), /at must be \[left, bottom, right, top\]/);
+  assert.throws(() => renderSVG(plot(rows, { x: "g", y: "v" }).bar().inset({ x: [0, 1], y: [0, 1], at: [0, 0, 0.5, 0.5] }).spec()), /x and y must be number or time axes/);
+});
+
+test("the scale bar has a round length that matches the map scale; the north arrow points up", () => {
+  const f = figure(islandMap().coord("geo", { scalebar: true, north: true }).spec(), { document });
+  assert.deepEqual([f.ns.coord.scalebar, f.ns.coord.north], ["bottom-left", "top-right"]);
+  const bar = f.svg.querySelector(".pt-scalebar");
+  const [km, px] = [+bar.getAttribute("data-km"), +bar.getAttribute("data-px")];
+  const box = f.layout.panels[0];
+  const drawn = equalize(f.domains[0], box.innerW, box.innerH);
+  const kmPerPx = ((drawn.x[1] - drawn.x[0]) * 111.32 * Math.cos((((drawn.y[0] + drawn.y[1]) / 2) * Math.PI) / 180)) / box.innerW;
+  assert.ok(Math.abs(px * kmPerPx - km) < 1e-6, `${px} px is ${km} km`);
+  assert.ok([1, 2, 5].includes(km / 10 ** Math.floor(Math.log10(km))), `a round length: ${km}`);
+  assert.ok(px <= box.innerW * 0.2 && px > box.innerW * 0.07);
+  assert.match(bar.textContent, /^\d[\d,]* km$/);
+  assert.equal(f.svg.querySelector(".pt-north text").textContent, "N");
+  assert.equal(figure(islandMap().spec(), { document }).svg.querySelector(".pt-scalebar"), null);
+  assert.throws(() => base.coord("geo", { scalebar: "middle" }), /unknown scalebar "middle"/);
+});
+
+test("repel places dense labels without overlaps and clear of the points", () => {
+  const anchors = Array.from({ length: 30 }, (_, i) => ({ x: 300 + (i % 6) * 6, y: 200 + Math.floor(i / 6) * 5 }));
+  const sizes = anchors.map(() => ({ w: 40, h: 12 }));
+  const points = anchors.map((a) => ({ ...a, r: 3 }));
+  const spots = placeLabels(anchors, sizes, points, { x0: 0, y0: 0, x1: 700, y1: 500 }, 11);
+  const boxes = spots.map((s, i) => ({ x0: s.x - 20, x1: s.x + 20, y0: s.y - 6, y1: s.y + 6, i }));
+  for (const a of boxes) for (const b of boxes) if (a.i < b.i) assert.ok(a.x1 <= b.x0 || b.x1 <= a.x0 || a.y1 <= b.y0 || b.y1 <= a.y0, `labels ${a.i} and ${b.i} overlap`);
+  for (const b of boxes) for (const pt of points) assert.ok(Math.hypot(pt.x - Math.max(b.x0, Math.min(b.x1, pt.x)), pt.y - Math.max(b.y0, Math.min(b.y1, pt.y))) >= pt.r - 1e-9, "a label covers a point");
+  assert.ok(spots.some((s) => s.leader), "far labels get a leader line");
+  assert.equal(placeLabels([{ x: 50, y: 50 }], [{ w: 20, h: 10 }], [], { x0: 0, y0: 0, x1: 100, y1: 100 }, 10)[0].x, 50 + 10 + 4, "a free label sits right of its anchor");
+  const blocked = placeLabels([{ x: 50, y: 50 }], [{ w: 20, h: 10 }], [], { x0: 0, y0: 0, x1: 100, y1: 100 }, 10, [{ x0: 52, y0: 40, x1: 100, y1: 60 }])[0];
+  assert.ok(blocked.x + 10 <= 52 || blocked.y + 5 <= 40 || blocked.y - 5 >= 60, "a label keeps clear of a blocked box (an inset, the scale bar)");
+  const svg = renderSVG(plot(islands, { x: "lon", y: "lat" }).point().text({ label: "name", repel: true }).spec());
+  assert.match(svg, />main 1</);
 });
 
 test("a method returns a new builder and keeps the old one", () => {

@@ -86,7 +86,9 @@ draw(plot(rows, { x: "time", y: "value", color: "sensor" }).line().facet("indica
 | Name lines at their ends | `line(direct=True)` with `theme(legend="none")` |
 | Areas from GeoJSON or a GeoDataFrame | `plot(geojson).polygon(fill="households", tooltip="name")`; outlines only: `polygon()` |
 | Classes with a stepped legend | `fill(breaks=[0, 50, 1000, 10000])`; class names: `labels=[...]`; the same for `color()` |
-| Maps | `coord("geo")`: x = longitude, y = latitude, equal distance per px, degree labels |
+| Maps | `coord("geo")`: x = longitude, y = latitude, equal distance per px, degree labels; `coord("geo", scalebar=True, north=True)` |
+| Distant areas in the same figure | `inset(x=[122.9, 131.4], y=[24.0, 28.6], at=[0.02, 0.6, 0.3, 0.98])` |
+| Labels that do not overlap | `text(label="name", repel=True)` |
 | Category colors | `color(palette="sakura")`, or `color(values={"a": "red", "b": "#123456"})` |
 | Number colors | `color(scheme="ai")`; diverging: `color(scheme="aiaka", mid=0)` |
 

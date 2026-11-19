@@ -42,7 +42,8 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 | `scales` | `x`, `y`: `type`, `limits`, `format`, `breaks`, `labels`. `color`, `fill`: `values`, `palette`, `scheme`, `limits`, `mid`, `clamp`, `breaks`, `labels`. |
 | `labels` | `title`, `subtitle`, `caption`, `x`, `y`, `color`, `fill`. `null` removes a title. A missing key uses the first mapped column name. |
 | `info` | Optional. `entries`: `[key, value]` pairs in order; a value is a string, a number, a boolean or `null`. `position`: `right` or `bottom`; without it, `right`, or the place with the most room in a fixed size. |
-| `coord` | Optional. `{type: "geo"}`: map coordinates (§5) |
+| `coord` | Optional. `{type: "geo", scalebar?, north?}`: map coordinates, with the corners of the scale bar and the north arrow (§5) |
+| `insets` | Optional. `[{x: [low, high], y: [low, high], at: [left, bottom, right, top]}]`: inset panels (§6) |
 | `theme` | `style`, `format`, and the overrides `width`, `height`, `size`, `legend` |
 
 ### Column types
@@ -93,7 +94,7 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 | `rect` | xmin, xmax, ymin, ymax, color, tooltip | alpha | – | `rect` |
 | `band` | xmin, xmax, ymin, ymax, color | alpha | – | `rect`. A missing bound is the panel edge. |
 | `tile` | x, y, color, tooltip | alpha | – | `cell` (two categories), `barX`/`barY` (one category), `rect` (two numbers) |
-| `text` | x, y, label, color | size, alpha | – | `text` |
+| `text` | x, y, label, color | size, alpha, repel | – | `text`; with `repel`, leader lines (`path`) |
 | `errorbar` | x, ymin, ymax, color | size, alpha, position | dodge | `ruleX` and two caps |
 | `polygon` | geometry, fill, color, tooltip | size, alpha | – | `geo`, through the x and y scales |
 | `box` | x, y, color | alpha (of the box fill, default 0.3) | Tukey box per category (`boxStats` in `stats.js`): quartiles, whiskers to the last values within 1.5 IQR, outliers | `barY` (q1 to q3, outlined in the series color), `tickY` (bold median and whisker caps), `ruleX` (whiskers), `dot` (outliers, in the series color) |
@@ -112,6 +113,7 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 | `span` | 0–1 | The share of the points in each local fit of `loess` (default 0.75) |
 | `band` | `true` (default), `false` | The confidence band of `lm` |
 | `direct` | `true`, `false` (default) | The name of each line at its end (below) |
+| `repel` | `true`, `false` (default) | Text labels move to a free place near their point (below) |
 
 - `color` maps the stroke of lines and the fill of points, bars, areas, rects, tiles and text, and the outline of polygons. `fill` maps the fill of polygons (and rasters).
 - A line, path or step without `group` has one line per color value. A missing value (`null`) makes a gap.
@@ -120,6 +122,7 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 - A statistic runs on the rows of each panel, after the legend filter. Bin edges do not depend on the panel.
 - Dodge of `point`, `segment` and `errorbar`: the band of each category has one slot per color of the plot, in the legend order, so a color has the same place in every category, panel and layer, and the segments of a color meet its points. A color that the legend hides leaves its slot empty. The slots are along the category axis: x, else y (`errorbar` draws vertical bars, so it needs a category x). Dodge needs a category axis and a color mapped to a string column; a constant color takes the center. The caps of an error bar are 30% of the band, or 60% of a slot.
 - `polygon` draws the GeoJSON `Polygon` and `MultiPolygon` geometries of a geometry column, with x as the first coordinate (longitude) and y as the second (latitude). Holes stay empty (even-odd rule). Without `geometry`, it takes the column named `geometry`. `fill` fills the areas (a column, through the fill scale, or a color); `color` is the outline. Without `fill`, it draws outlines in `muted`, 0.6 px; with `fill`, thin outlines (0.5 px) in the `background` color separate the areas. `size` is the outline width; `alpha` the opacity of the fill (or of the outline without fill). The bounding boxes of the geometries train the axis domains. A geometry column goes to `geometry` only.
+- `text(repel=true)` places each label, in row order (put the important ones first), at the first free place around its anchor: right, upper right, lower right, left, upper left, lower left, above, below (0.4 em beside, 0.2 em above or below, beyond a point drawn there), then on rings 0.5 em apart, up to 10 em. A place is free when the label is inside the panel and clear of the labels placed before, of the anchors, of the points of the `point` layers of the panel, of the insets and of the scale bar and north arrow. When no place is free, the label goes to the right of its anchor anyway. A label further than 1.5 em from its anchor gets a thin leader line in `muted`. The placement uses the font metrics (the same in Node and the browser) and runs again at each zoom.
 - Direct labels (`line(direct=true)`): each series (the `group` value, else the `color` value) gets its name right of its last point in view, in its color, darkened (or lightened on a dark background) to a contrast of 3:1 at least. A long name wraps to 2 lines, at most 160 px or 20% of the figure width. Labels that would overlap move apart vertically, and stay in the panel when there is room. Each panel gets a right margin for the longest name; the legend stays unless `theme(legend="none")`.
 
 ## 5. Scales
@@ -165,6 +168,16 @@ There are two color scales: `color` (`color()`, the `color` channel) and `fill` 
 - The stored view does not change: zoom, pan, reset, a resize and "Copy for a slide" draw it at equal scale again.
 - Tick labels are in degrees: `135°E`, `35°N` (W and S for negative values), unless `format` is set. There are no axis titles unless `labels()` sets them.
 - x and y must be number axes (not log, time or category), and `facet(free=)` must be `both` or unset.
+- `coord("geo", scalebar=, north=)`: `true` or a corner (`bottom-left`, `bottom-right`, `top-left`, `top-right`). `scalebar=true` is at the bottom left, `north=true` at the top right, 0.8 em inside the frame of each main panel (not the insets). The scale bar is a round length (1, 2 or 5 × 10^k km) near a fifth of the panel width, at 111.32 km × cos φ per degree of longitude, with its length as text above it; it follows the zoom. The north arrow points up.
+
+### Insets
+
+`inset(x=[low, high], y=[low, high], at=[left, bottom, right, top])` draws the extent x × y in a box of each panel; `at` is in shares of the panel, from its bottom left. For example the Okinawa islands, the Izu and Ogasawara islands, or eastern Hokkaido on a map of Japan, so that no point is left out of the main extent. Each call adds one inset.
+
+- An inset draws the layers of its panel (with the rows of that panel), on the `background` color, with a frame in `tick` and without axes and grid lines. It covers the panel under it.
+- In map coordinates, the extent grows on one side to fill the box at the same distance per px in x and y.
+- An inset keeps its extent: zoom, pan and the zoom buttons apply to the main panels only. Hover and pinned labels work in insets.
+- Insets need number or time axes.
 
 ## 6. Facets
 

@@ -74,6 +74,11 @@ def test_only_used_columns_go_into_the_spec():
         (lambda p: p.color(breaks=[0, 1], mid=0.5), "mid does not apply with breaks"),
         (lambda p: p.fill(breaks=[0, 1], values=["red"]), "one color per break"),
         (lambda p: p.coord("mercator"), 'unknown type "mercator"'),
+        (lambda p: p.coord("geo", scalebar="middle"), 'unknown scalebar "middle"'),
+        (lambda p: p.coord("geo", grid=True), 'unknown option "grid"'),
+        (lambda p: p.inset(x=[1, 0], y=[0, 1], at=[0, 0, 0.5, 0.5]), "x must be \\[low, high\\]"),
+        (lambda p: p.inset(x=[0, 1], y=[0, 1], at=[0, 0, 1.5, 0.5]), "at must be \\[left, bottom, right, top\\]"),
+        (lambda p: p.text(label="g", repel="yes"), "repel must be True or False"),
     ],
 )
 def test_errors_name_the_problem_and_the_valid_names(build, message):

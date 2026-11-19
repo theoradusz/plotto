@@ -23,7 +23,7 @@ export function normalize(spec, overrides = {}) {
   }
   const labels = { ...defaultLabels(layers), ...geoLabels, ...spec.labels };
   const info = spec.info?.entries?.length ? { entries: spec.info.entries, position: spec.info.position ?? "right", set: !!spec.info.position } : null;
-  return { tables, layers, facet, scales, labels, info, coord, theme };
+  return { tables, layers, facet, scales, labels, info, coord, insets: spec.insets ?? [], theme };
 }
 
 function toTable({ columns }) {

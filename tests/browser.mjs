@@ -33,6 +33,9 @@ const districts = {
   ],
 };
 
+const towns = [135.2, 135.25, 135.3, 135.22, 135.28, 135.7].map((lon, i) => ({ lon, lat: 35.4 + (i % 3) * 0.03, name: `town ${i + 1}` }));
+towns.push({ lon: 127.7, lat: 26.2, name: "far island" });
+
 const specs = [
   plot(rows, { x: "time", y: "v", color: "series" }).line().hline({ y: 0 }).facet("sensor", { free: "y" }).labels({ title: "Test" }).info({ site: "hayama", run: 15 }).spec(),
   plot(spectra, { x: "wl", y: "a", color: "hour", group: "hour" }).line().spec(),
@@ -40,8 +43,9 @@ const specs = [
   plot(forest, { x: "v", y: "row", color: "model" }).segment({ x: "lo", xend: "hi", yend: "row", position: "dodge" }).point({ position: "dodge" }).x({ type: "log", breaks: [0.5, 1, 2, 5] }).spec(),
   plot(rows.slice(0, 120), { x: "time", y: "v", color: "series" }).line({ direct: true }).labels({ caption: "A caption long enough to wrap: ".repeat(8) }).theme("pastel", { legend: "none" }).spec(),
   plot(districts).polygon({ fill: "hh", tooltip: "name" }).point({ data: [{ lon: 135.1, lat: 35.9, k: "town" }], x: "lon", y: "lat", color: "k" }).fill({ breaks: [0, 50, 1000] }).coord("geo").spec(),
+  plot(towns, { x: "lon", y: "lat" }).point().text({ label: "name", repel: true }).x({ limits: [135, 136] }).y({ limits: [35, 36] }).inset({ x: [127, 128.5], y: [25.8, 26.8], at: [0.02, 0.6, 0.32, 0.98] }).coord("geo", { scalebar: true, north: true }).spec(),
 ];
-const modes = [true, true, false, true, false, true]; // plots 2 and 4 are static
+const modes = [true, true, false, true, false, true, true]; // plots 2 and 4 are static
 
 const dir = mkdtempSync(join(tmpdir(), "plotto-test-"));
 const js = (await bundle({ cdn: false })).replace(/<\/script/gi, "<\\/script");
@@ -249,6 +253,19 @@ try {
     const [x0, x1] = p.plot.scale('x').domain, [y0, y1] = p.plot.scale('y').domain;
     return JSON.stringify([((x1 - x0) * Math.cos((y0 + y1) / 2 * Math.PI / 180)) / b.innerW, (y1 - y0) / b.innerH, ctl[5].state.domains !== ctl[5].state.home]); })()`));
   check("a zoom box on a map keeps the same distance per px in x and y", equal[2] && Math.abs(equal[0] - equal[1]) / equal[1] < 1e-9, JSON.stringify(equal));
+
+  // An inset: hover shows its points; a drag in it does not zoom.
+  await b.evaluate("document.getElementById('p6').scrollIntoView()");
+  const far = JSON.parse(await b.evaluate("(() => { const st = ctl[6].state, p = st.panels[1], b = st.layout.panels[1], r = st.svg.getBoundingClientRect(), k = r.width / st.W; return JSON.stringify([r.left + (b.x + p.plot.scale('x').apply(127.7)) * k, r.top + (b.y + p.plot.scale('y').apply(26.2)) * k]); })()"));
+  await b.mouse("mouseMoved", far[0] - 1, far[1], { buttons: 0 });
+  await b.mouse("mouseMoved", ...far, { buttons: 0 });
+  await sleep(150);
+  const insetTip = await b.evaluate("document.querySelector('#p6 .pt-tip').textContent");
+  check("hover in an inset shows its point", insetTip.includes("127.7"), insetTip);
+  const p6 = JSON.parse(await b.evaluate("JSON.stringify(ctl[6].state.layout.panels[1])"));
+  await sleep(400);
+  await drag(6, [p6.x + 10, p6.y + 10], [p6.x + p6.innerW - 10, p6.y + p6.innerH - 10]);
+  check("a drag in an inset does not zoom", await b.evaluate("ctl[6].state.domains === ctl[6].state.home"));
 
   check("no page errors", b.errors.length === 0, b.errors.join("; "));
 } finally {
