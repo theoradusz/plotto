@@ -146,6 +146,31 @@ def summary():
     )
 
 
+def intervals():
+    """Intervals side by side: position="dodge" on points and segments puts each color in its own slot of the
+    category, here on the y axis. Each color keeps its slot in every row."""
+    df = load("monthly")
+    df["half"] = df.month.dt.month.map(lambda m: "January to June" if m <= 6 else "July to December")
+    s = df.groupby(["site", "half"], as_index=False)["volume"].agg(["mean", "min", "max"])
+    return (
+        plot(s, x="mean", y="site", color="half")
+        .segment(x="min", xend="max", yend="site", size=3, alpha=0.5, position="dodge")
+        .point(size=4, position="dodge")
+        .labels(title="Monthly volume per site and half-year", x="volume (m³): mean (dot) and range (line)", y=None, color=None)
+        .theme(legend="bottom")
+    )
+
+
+def end_labels():
+    """line(direct=True) names each line at its end, in its color, so the plot needs no legend."""
+    return (
+        plot(uv254(), x="time", y="value", color="sensor")
+        .line(direct=True)
+        .labels(title="UV254 over one week", x=None, y="UV254 (1/m)")
+        .theme(legend="none")
+    )
+
+
 # --- Bars and areas -------------------------------------------------------------------------
 
 
@@ -282,6 +307,18 @@ def log_axes():
     )
 
 
+def axis_breaks():
+    """x(breaks=, labels=) sets the ticks and their text. Without breaks, a log axis that spans less than three
+    powers of ten has ticks at 1, 2 and 5 times each power."""
+    df = load("calibration")
+    return (
+        plot(df[df.concentration > 0], x="concentration", y="absorbance", color="batch")
+        .point(size=3)
+        .x(type="log", breaks=[0.5, 1, 2, 5, 10], labels=["0.5", "1", "2", "5", "10 (max)"])
+        .labels(title="Calibration with set ticks", x="concentration (mg/L)")
+    )
+
+
 # --- Styles and output ----------------------------------------------------------------------
 
 
@@ -360,14 +397,16 @@ def square():
 
 
 def titles():
-    """labels() sets the title, subtitle, caption, axis titles and legend title. None removes a title."""
+    """labels() sets the title, subtitle, caption, axis titles and legend title. None removes a title. A long caption
+    wraps at the plot width."""
     return (
         plot(uv254(), x="time", y="value", color="sensor")
         .line()
         .labels(
             title="UV254 over one week",
             subtitle="15-min values of three sensors",
-            caption="Source: made-up data",
+            caption="Source: made-up data. The sensors were cleaned on Monday morning; the gaps are outages of the "
+            "data logger, not of the sensors. Values are 15-min means of 1-min readings.",
             x=None,
             y="UV254 (1/m)",
             color="Sensor",
@@ -421,8 +460,8 @@ PAGES = {
         "file": "types.html",
         "title": "Plot types",
         "sections": {
-            "Lines and areas": [step, area, ribbon, smooth],
-            "Bars and distributions": [stacked_bars, dodged_bars, histogram, box, summary],
+            "Lines and areas": [step, area, ribbon, smooth, end_labels],
+            "Bars and distributions": [stacked_bars, dodged_bars, histogram, box, summary, intervals],
             "Cells and many points": [heatmap, dense],
         },
     },
@@ -439,7 +478,7 @@ PAGES = {
         "file": "scales.html",
         "title": "Scales and legends",
         "sections": {
-            "Axes": [limits, log_axes, category_order, square],
+            "Axes": [limits, log_axes, axis_breaks, category_order, square],
             "Titles and legends": [titles, info, legends],
             "Interaction": [interaction],
         },

@@ -6,7 +6,7 @@ import { facetPanels } from "./facets.js";
 import { drawInfo, infoModel } from "./info.js";
 import { LAYERS } from "./layers.js";
 import { drawLegend, legendModel } from "./legend.js";
-import { LINE, place, TICK } from "./layout.js";
+import { directModel, LINE, place, TICK } from "./layout.js";
 import { AXIS_CHANNELS, axisKind, colorScale, ticks, trainDomain } from "./scales.js";
 import { normalize } from "./spec.js";
 import { svgElement, svgText } from "./svg.js";
@@ -31,9 +31,10 @@ export function figure(spec, { document: doc = globalThis.document, width, domai
   const grid = facetPanels(ns);
   const kind = { x: axisKind(ns, "x"), y: axisKind(ns, "y") };
   const color = colorScale(ns);
-  const ctx = { ns, kind, colorLevels: color.domain ?? [], edges: layerEdges(ns) };
+  const ctx = { ns, kind, colorLevels: color.domain ?? [], colorKind: color.kind, edges: layerEdges(ns) };
   for (const p of grid.panels) p.views = ns.layers.map((layer, li) => makeView(ctx, layer, p.rows[li], new Set()));
   const home = homeDomains(ns, grid, kind);
+  const direct = directModel(ns, fontSizes(theme).tick, W);
   // One layout: the place of the legend and of the info card (right or bottom), and their text size (share k).
   // cut counts what does not show well: legend labels and info keys with an ellipsis, a second legend column,
   // the "+N more" entries of the info card.
@@ -43,7 +44,7 @@ export function figure(spec, { document: doc = globalThis.document, width, domai
     const info = infoModel(ns, f, { W, H, narrow: W < NARROW, place: where.info });
     const above = info?.position === "right" ? info.height + f.base : 0; // the info card sits above a right legend
     const legend = legendModel(ns, color, f, { horizontal: where.legend === "bottom", maxWidth: W * 0.9, maxHeight: H * 0.8 - above });
-    const layout = place({ ns, grid, kind, home, legend, info, fonts: f, W, H });
+    const layout = place({ ns, grid, kind, home, legend, info, direct, fonts: f, W, H });
     const items = legend?.items ?? [];
     const cut = items.filter((it) => it.lines.at(-1).endsWith("…")).length + (items.some((it) => !legend.horizontal && it.x > 0) ? 1 : 0) + (info?.cut ?? 0);
     const p = layout.panels[0];
@@ -89,7 +90,7 @@ export function figure(spec, { document: doc = globalThis.document, width, domai
   for (const t of layout.texts) svg.append(svgText(doc, t.text, t.attrs));
   if (info) svg.append(drawInfo(doc, info, theme, layout.info));
   for (const s of layout.strips) svg.append(strip(doc, s, theme));
-  const state = { spec, ns, doc, svg, theme, fonts, grid, kind, color, ctx, legend, info, layout, home, W, H };
+  const state = { spec, ns, doc, svg, theme, fonts, grid, kind, color, ctx, legend, info, layout, home, direct, W, H };
   state.domains = domains ?? home;
   state.hidden = hidden;
   state.panelLayer = svg.appendChild(svgElement(doc, "g", { class: "pt-panels" }));
@@ -124,14 +125,16 @@ function drawPanel(state, p, i) {
   const { ns, doc, theme, fonts, kind, color } = state;
   const box = state.layout.panels[i];
   const domain = { x: plotDomain(kind.x, state.domains[i].x), y: plotDomain(kind.y, state.domains[i].y) };
-  const bandwidth = { x: kind.x === "category" ? (box.innerW / (domain.x.length + 0.2)) * 0.8 : 0 };
+  // The band of a category, as in Observable Plot with padding 0.2.
+  const band = (k, size) => (kind[k] === "category" ? (size / (domain[k].length + 0.2)) * 0.8 : 0);
+  const bandwidth = { x: band("x", box.innerW), y: band("y", box.innerH) };
   const layers = ns.layers.map((layer, li) => {
     const view = p.views[li];
-    const c = context({ view, layer, kind, color, theme, fonts, domain, bandwidth });
+    const c = context({ view, layer, kind, color, theme, fonts, domain, bandwidth, direct: state.direct });
     return { layer, view, c, marks: view.n ? LAYERS[layer.type](c) : [] };
   });
   const axis = (k) => {
-    const t = ticks(kind[k], state.domains[i][k], box.count[k], ns.scales[k]?.format);
+    const t = ticks(kind[k], state.domains[i][k], box.count[k], ns.scales[k]);
     const inside = (v) => kind[k] === "category" || (+v >= +domain[k][0] && +v <= +domain[k][1]);
     return { major: t.major.filter(inside), minor: t.minor, format: t.format };
   };
@@ -146,16 +149,16 @@ function drawPanel(state, p, i) {
   if (box.showX) {
     const rotate = box.rotateX ? { tickRotate: -40, textAnchor: "end" } : {};
     const wrapped = (v) => box.wrapX.get(String(v))?.join("\n") ?? ax.format(v);
-    const wrap = box.wrapX.size ? { tickFormat: wrapped, lineHeight: LINE } : { tickFormat: ax.format };
+    const wrap = box.wrapX.size ? { tickFormat: wrapped, lineHeight: LINE } : labelsOf(kind.x, ax.format);
     marks.push(Plot.axisX(ax.major, { ...axisStyle, ...rotate, anchor: "bottom", ...wrap }));
   }
-  if (box.showY) marks.push(Plot.axisY(ay.major, { ...axisStyle, anchor: "left", tickFormat: ay.format }));
+  if (box.showY) marks.push(Plot.axisY(ay.major, { ...axisStyle, anchor: "left", ...labelsOf(kind.y, ay.format) }));
   const plot = Plot.plot({
     document: doc,
     width: box.w,
     height: box.h,
     marginLeft: box.ml,
-    marginRight: 0,
+    marginRight: box.mr,
     marginTop: 0,
     marginBottom: box.mb,
     x: scaleOptions(kind.x, domain.x),
@@ -170,7 +173,7 @@ function drawPanel(state, p, i) {
 }
 
 // Channel accessors of one layer view in one panel, for layers.js. Time values become Date objects.
-function context({ view, layer, kind, color, theme, fonts, domain, bandwidth }) {
+function context({ view, layer, kind, color, theme, fonts, domain, bandwidth, direct }) {
   const axisOf = (ch) => (AXIS_CHANNELS.x.includes(ch) ? "x" : AXIS_CHANNELS.y.includes(ch) ? "y" : null);
   const cache = {};
   const v = (ch) => {
@@ -185,13 +188,21 @@ function context({ view, layer, kind, color, theme, fonts, domain, bandwidth }) 
     v,
     options: layer.options,
     colors: (fallback) => (!colorCh ? fallback : "value" in colorCh ? colorCh.value : v("color").map(color.apply)),
+    shift: view.shift,
     groups: () => v("group") ?? (colorCh?.column ? v("color") : undefined),
     kind,
     theme,
     fonts,
     domain,
     bandwidth,
+    direct,
   };
+}
+
+// The tick labels of an axis. On a log axis, Observable Plot passes a tickFormat through d3's log tickFormat, which
+// blanks the labels of some multiples (for example 5) when the axis has many ticks: the text channel shows them all.
+function labelsOf(kind, format) {
+  return kind === "log" ? { text: (v) => format(v) } : { tickFormat: format };
 }
 
 function plotDomain(kind, d) {

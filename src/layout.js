@@ -9,8 +9,27 @@ const ROTATE = 40; // degrees of rotated category labels
 const WRAP_LINES = 3; // a category label wider than its band wraps to this many lines, before any rotation
 export const LINE = 1.15; // line height of wrapped category labels, in em
 const TOOLBAR = 0.22; // share of the width kept free of the title, for the toolbar
+const CAPTION_LINES = 4; // a longer caption ends with an ellipsis
+const CAPTION_LINE = 1.3; // line height of the caption, in em
+export const DIRECT = { lines: 2, line: 1.15, gap: 0.4, width: 160, share: 0.2 }; // direct labels: lines, line height (em), gap to the line end (em), max width (px or share of W)
 
-export function place({ ns, grid, kind, home, legend, info, fonts, W, H }) {
+// The direct labels of the line layers with direct: true: the name of each series (its group, else its color),
+// wrapped to DIRECT.lines lines. Returns { lines: Map(name → lines), width, size } or null.
+export function directModel(ns, size, W) {
+  const names = new Set();
+  for (const layer of ns.layers) {
+    const column = layer.type === "line" && layer.options.direct && (layer.channels.group?.column ?? layer.channels.color?.column);
+    if (column) for (const v of ns.tables[layer.table].columns[column].values) if (v !== null) names.add(String(v));
+  }
+  if (!names.size) return null;
+  const metrics = ns.theme.metrics;
+  const room = Math.min(DIRECT.width, W * DIRECT.share);
+  const lines = new Map([...names].map((name) => [name, wrapText(name, size, room, false, metrics, DIRECT.lines)]));
+  const width = d3.max([...lines.values()].flat(), (l) => textWidth(l, size, false, metrics));
+  return { lines, width, size };
+}
+
+export function place({ ns, grid, kind, home, legend, info, direct, fonts, W, H }) {
   const theme = ns.theme;
   const metrics = theme.metrics;
   const tw = (t, size, bold) => textWidth(t, size, bold, metrics);
@@ -24,7 +43,7 @@ export function place({ ns, grid, kind, home, legend, info, fonts, W, H }) {
   // The title starts at the left edge of the panels. A screen plot keeps room on the right for the toolbar; a fixed
   // format (copied as a picture) uses the full width, less the y axis title and tick labels on the left.
   const yLabels = d3.max(grid.panels, (p, i) => {
-    const t = ticks(kind.y, home[i].y, 5, ns.scales.y?.format);
+    const t = ticks(kind.y, home[i].y, 5, ns.scales.y);
     return d3.max(t.major, (v) => tw(t.format(v), fonts.tick));
   });
   const left = yt + (yLabels ?? 0) + TICK.size + TICK.padding + 3;
@@ -41,11 +60,14 @@ export function place({ ns, grid, kind, home, legend, info, fonts, W, H }) {
   const subtitleLines = subtitle ? wrapText(subtitle, subtitleSize, headW, false, metrics) : [];
   const head = titleLines.length * titleSize * 1.25 + subtitleLines.length * subtitleSize * 1.4;
   const top = pad + head + (head ? s * 0.7 : 0);
-  const cap = caption ? fonts.tick * 1.8 : 0;
+  // The caption wraps at the width of the plot (less the y axis), to CAPTION_LINES lines at most.
+  const captionLines = caption ? wrapText(caption, fonts.tick, W - 2 * pad - left, false, metrics, CAPTION_LINES) : [];
+  const cap = captionLines.length ? captionLines.length * fonts.tick * CAPTION_LINE + fonts.tick * 0.5 : 0;
   const rightW = Math.max(legend && !legend.horizontal ? legend.width : 0, at("right")?.width ?? 0);
   const right = rightW ? rightW + s * 1.5 : 0;
   const bottom = legend?.horizontal ? legend.height + s * 0.8 : 0;
   const below = at("bottom") ? at("bottom").height + gap : 0;
+  const mr = direct ? Math.ceil(direct.width + direct.size * DIRECT.gap + 2) : 0; // right of each panel, for the direct labels
   const area = { x: pad + yt, y: top, w: W - 2 * pad - yt - right, h: H - top - pad - xt - bottom - cap - below };
 
   const strip = grid.kind === "none" ? 0 : Math.round(fonts.strip * 2);
@@ -71,7 +93,7 @@ export function place({ ns, grid, kind, home, legend, info, fonts, W, H }) {
     let xLabelW = 0;
     grid.panels.forEach((p, i) => {
       if (showY(p)) {
-        const t = ticks(kind.y, home[i].y, count.y, ns.scales.y?.format);
+        const t = ticks(kind.y, home[i].y, count.y, ns.scales.y);
         const w = d3.max(t.major, (v) => tw(t.format(v), fonts.tick)) ?? 0;
         ml[p.col] = Math.max(ml[p.col], Math.ceil(w + TICK.size + TICK.padding + 3));
         // A tick at the top edge has half its label above the panel: move the panels down to keep it off the subtitle.
@@ -120,7 +142,7 @@ export function place({ ns, grid, kind, home, legend, info, fonts, W, H }) {
     grid.panels.forEach((p, i) => {
       if (showX(p, i)) mb[p.row] = Math.max(mb[p.row], Math.ceil(xLabelH + TICK.size + TICK.padding + 3));
     });
-    innerW = (area.w - d3.sum(ml) - gap * (grid.ncol - 1) - rightStrip) / grid.ncol;
+    innerW = (area.w - d3.sum(ml) - mr * grid.ncol - gap * (grid.ncol - 1) - rightStrip) / grid.ncol;
     innerH = (area.h - mt - d3.sum(mb) - grid.nrow * wrapStrip - topStrip - gap * (grid.nrow - 1)) / grid.nrow;
   }
   innerW = Math.max(20, innerW);
@@ -137,14 +159,15 @@ export function place({ ns, grid, kind, home, legend, info, fonts, W, H }) {
   const slackY = ((room.h - innerH) * grid.nrow) / 2;
   const slackX = ((room.w - innerW) * grid.ncol) / 2;
 
-  const colX = d3.cumsum([area.x + slackX, ...ml.slice(0, -1).map((m) => m + innerW + gap)]);
+  const colX = d3.cumsum([area.x + slackX, ...ml.slice(0, -1).map((m) => m + innerW + mr + gap)]);
   const rowY = d3.cumsum([area.y + mt + topStrip + slackY, ...mb.slice(0, -1).map((m) => wrapStrip + innerH + m + gap)]);
   const panels = grid.panels.map((p, i) => ({
     x: colX[p.col],
     y: rowY[p.row] + wrapStrip,
-    w: ml[p.col] + innerW,
+    w: ml[p.col] + innerW + mr,
     h: innerH + mb[p.row],
     ml: ml[p.col],
+    mr,
     mb: mb[p.row],
     innerW,
     innerH,
@@ -165,13 +188,13 @@ export function place({ ns, grid, kind, home, legend, info, fonts, W, H }) {
     const left = b.x + b.ml;
     const label = (text, width) => fitText(text, stripSize, width - 8, true, metrics);
     if (p.strips.top != null) strips.push({ x: left, y: b.y - wrapStrip - topStrip, w: innerW, h: strip, text: label(p.strips.top, innerW), full: p.strips.top, size: stripSize });
-    if (p.strips.right != null) strips.push({ x: left + innerW + 2, y: b.y, w: strip, h: innerH, text: label(p.strips.right, innerH), full: p.strips.right, vertical: true, size: stripSize });
+    if (p.strips.right != null) strips.push({ x: left + innerW + mr + 2, y: b.y, w: strip, h: innerH, text: label(p.strips.right, innerH), full: p.strips.right, vertical: true, size: stripSize });
   });
 
   const first = panels[0];
   const lastCol = panels.find((b, i) => grid.panels[i].col === grid.ncol - 1) ?? first;
   const innerLeft = first.x + first.ml;
-  const innerRight = lastCol.x + lastCol.w;
+  const innerRight = lastCol.x + lastCol.ml + innerW;
   const panelsBottom = d3.max(panels, (b) => b.y + b.h);
   const texts = [];
   let y = pad;
@@ -182,9 +205,19 @@ export function place({ ns, grid, kind, home, legend, info, fonts, W, H }) {
     const cy = area.y + (area.h - d3.sum(mb)) / 2;
     texts.push({ text: yTitle, attrs: { transform: `translate(${pad + slackX + fonts.axisTitle * 0.85},${cy}) rotate(-90)`, "text-anchor": "middle", "font-size": fonts.axisTitle, fill: theme.muted } });
   }
-  if (caption) texts.push({ text: fitText(caption, fonts.tick, W - 2 * pad, false, metrics), attrs: { x: innerLeft, y: H - pad - (bottom ? bottom : 0) + fonts.tick * 0.2, "font-size": fonts.tick, fill: theme.muted, "text-anchor": "start" } });
+  if (captionLines.length) {
+    // The last line sits where a one-line caption sits; the others go above it. The caption starts at the panels,
+    // or further left when it would run off the figure.
+    const captionW = d3.max(captionLines, (l) => tw(l, fonts.tick));
+    const x = Math.max(pad, Math.min(innerLeft, W - pad - captionW));
+    const last = H - pad - bottom + fonts.tick * 0.2;
+    captionLines.forEach((line, k) => {
+      const y = last - (captionLines.length - 1 - k) * fonts.tick * CAPTION_LINE;
+      texts.push({ text: line, attrs: { class: "pt-caption", x, y, "font-size": fonts.tick, fill: theme.muted, "text-anchor": "start" } });
+    });
+  }
   // The right column is at the right edge, or next to the panels when the aspect makes them narrower.
-  const beside = innerRight + rightStrip + s * 1.5;
+  const beside = innerRight + mr + rightStrip + s * 1.5;
   const rightX = beside < W - pad - rightW - 1 ? beside : W - pad - rightW;
   const infoAt = !info
     ? null

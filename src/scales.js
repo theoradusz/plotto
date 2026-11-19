@@ -68,9 +68,17 @@ export function expand([lo, hi], kind) {
 }
 
 // Major ticks, minor ticks (midpoints, as ggplot) and the label format of one axis.
-export function ticks(kind, domain, count, format) {
+// scale: the axis options of the spec. breaks set the major ticks (without minor ticks); labels name them.
+export function ticks(kind, domain, count, { format, breaks, labels } = {}) {
+  if (breaks && kind === "category") throw new Error("plotto: breaks apply to number, log and time axes, not to a category axis");
   if (kind === "category") return { major: domain, minor: [], format: String };
   const [lo, hi] = domain;
+  if (breaks) {
+    const major = kind === "time" ? breaks.map((t) => new Date(t)) : breaks;
+    const base = kind === "time" ? d3.utcFormat(format ?? timePattern(major, hi - lo)) : d3.format(format ?? (kind === "log" ? "~g" : ",~r"));
+    const named = labels && new Map(breaks.map((v, i) => [+v, labels[i]]));
+    return { major, minor: [], format: named ? (v) => named.get(+v) ?? base(v) : base };
+  }
   if (kind === "time") {
     const major = d3.scaleUtc().domain([new Date(lo), new Date(hi)]).ticks(count);
     const pattern = format ?? timePattern(major, hi - lo);
@@ -78,8 +86,8 @@ export function ticks(kind, domain, count, format) {
   }
   if (kind === "log") {
     const decades = d3.range(Math.ceil(Math.log10(lo)), Math.floor(Math.log10(hi)) + 1).map((e) => 10 ** e);
-    // Less than two decades in view: 1, 2 and 5 times the powers of ten.
-    const major = decades.length >= 2 ? decades : d3.scaleLog().domain(domain).ticks(count).filter((v) => [1, 2, 5].includes(Math.round(v / 10 ** Math.floor(Math.log10(v) + 1e-9))));
+    // Fewer than three powers of ten in view: 1, 2 and 5 times the powers of ten.
+    const major = decades.length >= 3 ? decades : d3.scaleLog().domain(domain).ticks(count).filter((v) => [1, 2, 5].includes(Math.round(v / 10 ** Math.floor(Math.log10(v) + 1e-9))));
     const minor = decades.flatMap((d) => d3.range(2, 10).map((k) => (d / 10) * k)).filter((v) => v > lo && v < hi);
     return { major, minor, format: d3.format(format ?? "~g") };
   }

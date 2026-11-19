@@ -64,6 +64,12 @@ def test_only_used_columns_go_into_the_spec():
         (lambda p: p.info({"a": 1}, position="left"), 'unknown position "left"'),
         (lambda p: p.info({"date": pd.Timestamp("2026-10-01")}), "Format other values as a string"),
         (lambda p: p.info("hayama"), "entries must be"),
+        (lambda p: p.point(position="stack"), "position must be overlay or dodge"),
+        (lambda p: p.x(breaks=5), "breaks must be a list"),
+        (lambda p: p.x(breaks=["a"]), "breaks must be a list of numbers or dates"),
+        (lambda p: p.x(labels=["a"]), "labels need breaks"),
+        (lambda p: p.x(breaks=[1, 2], labels=["a"]), "labels must have one entry per break"),
+        (lambda p: p.line(direct="yes"), "direct must be True or False"),
     ],
 )
 def test_errors_name_the_problem_and_the_valid_names(build, message):
@@ -104,3 +110,10 @@ def test_info_keeps_the_order_and_numpy_values():
     assert info == {"entries": [["n", 3], ["x", 2.0], ["ok", True], ["none", None]]}
     assert "info" not in p.spec()
     assert "info" not in p.info({"a": 1}).info(None).spec()
+
+
+def test_breaks_accept_numpy_values_and_times():
+    p = plot(pd.DataFrame(FIXTURE["rows"]), x="t", y="v").line()
+    assert p.y(breaks=np.array([1, 2.5])).spec()["scales"]["y"]["breaks"] == [1, 2.5]
+    breaks = p.x(breaks=[pd.Timestamp("2026-10-20")], labels=["start"]).spec()["scales"]["x"]
+    assert breaks == {"breaks": [int(pd.Timestamp("2026-10-20").value // 1_000_000)], "labels": ["start"]}

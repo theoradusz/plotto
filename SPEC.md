@@ -39,7 +39,7 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 | `layers[].mapping` | Layer channels → column names |
 | `layers[].set` | Constants: channel values and options |
 | `facet` | `{wrap, free, ncol}`, `{rows, cols, free}` or `null` |
-| `scales` | `x`, `y`: `type`, `limits`, `format`. `color`: `values`, `palette`, `scheme`, `limits`, `mid`, `clamp`. |
+| `scales` | `x`, `y`: `type`, `limits`, `format`, `breaks`, `labels`. `color`: `values`, `palette`, `scheme`, `limits`, `mid`, `clamp`. |
 | `labels` | `title`, `subtitle`, `caption`, `x`, `y`, `color`. `null` removes a title. A missing key uses the first mapped column name. |
 | `info` | Optional. `entries`: `[key, value]` pairs in order; a value is a string, a number, a boolean or `null`. `position`: `right` or `bottom`; without it, `right`, or the place with the most room in a fixed size. |
 | `theme` | `style`, `format`, and the overrides `width`, `height`, `size`, `legend` |
@@ -73,10 +73,10 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 
 | Method | Channels | Options | Statistic | Observable Plot mark |
 |---|---|---|---|---|
-| `line` | x, y, color, group, tooltip | size, alpha, dash, summary | `summary` | `line`, sorted by x |
+| `line` | x, y, color, group, tooltip | size, alpha, dash, summary, direct | `summary` | `line`, sorted by x; `text` for the direct labels |
 | `path` | x, y, color, group, tooltip | size, alpha, dash | – | `line`, in row order |
 | `step` | x, y, color, group, tooltip | size, alpha, dash | – | `line`, step after each point |
-| `point` | x, y, color, tooltip | size, alpha, jitter, summary | `summary` | `dot` |
+| `point` | x, y, color, tooltip | size, alpha, jitter, summary, position | `summary`, dodge | `dot` |
 | `bar` | x, y, color, tooltip | alpha, position | stack or dodge | `barY` (category x), `rect` (number or time x, 90% of the data step) |
 | `hist` | x, color | alpha, bins, density, position | bins | `rect` |
 | `density` | x, color | size, alpha, dash | Gaussian kernel density | `areaY` + `line` |
@@ -85,12 +85,12 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 | `smooth` | x, y, color | size, alpha, dash, method, span, band | linear fit or loess | `areaY` (band) + `line` |
 | `hline`, `vline` | y or x, color | size, alpha, dash | – | `ruleY`, `ruleX` |
 | `abline` | color | slope, intercept, size, alpha, dash | – | `line` across the x domain |
-| `segment` | x, y, xend, yend, color | size, alpha, dash | – | `link` |
+| `segment` | x, y, xend, yend, color | size, alpha, dash, position | dodge | `link` |
 | `rect` | xmin, xmax, ymin, ymax, color, tooltip | alpha | – | `rect` |
 | `band` | xmin, xmax, ymin, ymax, color | alpha | – | `rect`. A missing bound is the panel edge. |
 | `tile` | x, y, color, tooltip | alpha | – | `cell` (two categories), `barX`/`barY` (one category), `rect` (two numbers) |
 | `text` | x, y, label, color | size, alpha | – | `text` |
-| `errorbar` | x, ymin, ymax, color | size, alpha | – | `ruleX` and two caps |
+| `errorbar` | x, ymin, ymax, color | size, alpha, position | dodge | `ruleX` and two caps |
 | `box` | x, y, color | alpha (of the box fill, default 0.3) | Tukey box per category (`boxStats` in `stats.js`): quartiles, whiskers to the last values within 1.5 IQR, outliers | `barY` (q1 to q3, outlined in the series color), `tickY` (bold median and whisker caps), `ruleX` (whiskers), `dot` (outliers, in the series color) |
 
 | Option | Values | Meaning |
@@ -100,18 +100,21 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 | `dash` | `solid`, `dashed`, `dotted`, `dashdot` | Line pattern |
 | `jitter` | number | Random horizontal offset, as a share of the category width or of the x step. The seed is fixed, so each output is the same. |
 | `summary` | `mean`, `median`, `min`, `max`, `sum` | One row per (x, color, group), with the summary of y |
-| `position` | `stack` (default), `dodge` (bar only), `overlay` | Stack: the colors add up at each x, in the legend order. Dodge: one bar per color, side by side. Overlay: each color starts at 0; fills are see-through. |
+| `position` | `stack`, `dodge`, `overlay` | Bars and areas (default `stack`): the colors add up at each x, in the legend order. Dodge (bars): one bar per color, side by side. Overlay: each color starts at 0; fills are see-through. Points, segments and error bars (default `overlay`; `stack` is an error): dodge puts each color in its own slot of the category band (below). |
 | `bins` | number | About this number of bins on round values (default 30). All panels and colors use the same bins. |
 | `density` | `true`, `false` | `hist` counts divided by (rows × bin width), so the area is 1 |
 | `method` | `lm` (default), `loess` | `lm`: least squares with a 95% confidence band (Student t). `loess`: local linear fit with tricube weights, without a band. |
 | `span` | 0–1 | The share of the points in each local fit of `loess` (default 0.75) |
 | `band` | `true` (default), `false` | The confidence band of `lm` |
+| `direct` | `true`, `false` (default) | The name of each line at its end (below) |
 
 - `color` maps the stroke of lines and the fill of points, bars, areas, rects, tiles and text.
 - A line, path or step without `group` has one line per color value. A missing value (`null`) makes a gap.
 - A layer without columns, for example `hline(y=0)`, draws once in each panel.
 - A layer table without the facet column draws in each panel.
 - A statistic runs on the rows of each panel, after the legend filter. Bin edges do not depend on the panel.
+- Dodge of `point`, `segment` and `errorbar`: the band of each category has one slot per color of the plot, in the legend order, so a color has the same place in every category, panel and layer, and the segments of a color meet its points. A color that the legend hides leaves its slot empty. The slots are along the category axis: x, else y (`errorbar` draws vertical bars, so it needs a category x). Dodge needs a category axis and a color mapped to a string column; a constant color takes the center. The caps of an error bar are 30% of the band, or 60% of a slot.
+- Direct labels (`line(direct=true)`): each series (the `group` value, else the `color` value) gets its name right of its last point in view, in its color, darkened (or lightened on a dark background) to a contrast of 3:1 at least. A long name wraps to 2 lines, at most 160 px or 20% of the figure width. Labels that would overlap move apart vertically, and stay in the panel when there is room. Each panel gets a right margin for the longest name; the legend stays unless `theme(legend="none")`.
 
 ## 5. Scales
 
@@ -121,7 +124,8 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 - The axis domain trains on the layer views, which include the statistics. For example, it includes the 0 of a bar and the top of a stack.
 - The first view is `limits` when it is set. A `null` bound keeps the data bound on that side, with its 5% space. Without limits, the first view is the data range plus 5% on each side.
 - A category axis shows the categories in the `limits` order, then in the `levels` order, then in natural sort order. A label that is too wide for its band wraps at its spaces, to 3 lines at most. If a word is still too wide, all labels rotate by 40°; a rotated label gets 60% of the panel height (at least 10 em) and ends with an ellipsis beyond it, and the left margin grows so that the first one is not cut off.
-- Continuous axes have major ticks and minor grid lines at the midpoints. A log axis has ticks at the powers of ten, with minor lines at 2–9 times each power.
+- Continuous axes have major ticks and minor grid lines at the midpoints. A log axis has ticks at the powers of ten, with minor lines at 2–9 times each power; with fewer than three powers of ten in view, it has ticks at 1, 2 and 5 times each power.
+- `breaks` (a list of numbers or times) sets the major ticks of a number, log or time axis, with no minor grid lines; a zoom keeps them, and a break outside the view does not show. `labels` (strings, one per break) are the tick labels; without them, the label is `format`, or `~g` (log), `,~r` (linear) or the time pattern. Breaks on a category axis are an error.
 - Time labels are on one line. The pattern follows the tick step: `%Y-%m`, `%m-%d`, `%m-%d %H:%M` (more than one day in view), `%H:%M` or `%H:%M:%S`. `format`, a d3-format or d3-time-format string, replaces it.
 
 ### Color
@@ -201,7 +205,7 @@ A style can also list theme color names as its palette: the `paper` and `dark` s
 - A bottom legend has its title on its first row, before the items.
 - A format with `shrink` makes the facet strip text smaller (the same size for all strips) before it cuts a label, down to that share of its size.
 - `aspect` is the shape of each panel, height / width: `1` gives square panels (for observed-against-predicted plots, with the same `limits` on x and y). The panels shrink in one direction to get that shape. A `screen` plot without `height` changes its height instead (at most 1.2 times its usual height), so the panels fill it. The space that is left goes half on each side of the panels.
-- The title and the subtitle align left with the panels and wrap to two lines at most. A format with `shrink` first makes a long title or subtitle smaller, down to that share of its size, so that it stays on one line; one that does not fit even then keeps its size and wraps. A `screen` plot keeps room on the right for the toolbar; a fixed size uses the full width. The caption is at the bottom left.
+- The title and the subtitle align left with the panels and wrap to two lines at most. A format with `shrink` first makes a long title or subtitle smaller, down to that share of its size, so that it stays on one line; one that does not fit even then keeps its size and wraps. A `screen` plot keeps room on the right for the toolbar; a fixed size uses the full width. The caption is at the bottom left, aligned with the panels: it wraps at the width of the figure less the y axis, to 4 lines at most (a longer one ends with an ellipsis), and starts further left only when it would run off the figure.
 - A bottom info table puts its entries in up to 3 columns, as many as fit on one line each; else one column whose values wrap.
 - `src/metrics.js` holds the glyph widths of each style font for the layout. CJK characters are one em wide.
 

@@ -62,16 +62,33 @@ export function colorTokens(theme) {
   return [...Object.keys(theme.colors), ...ROLES];
 }
 
+// Relative luminance of an RGB color (WCAG).
+function lum(c) {
+  const ch = [c.r, c.g, c.b].map((v) => {
+    v /= 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+}
+
+// The color as text on the background: darker on a light background (lighter on a dark one) until the contrast is
+// at least 3, so that a light series color such as yellow stays readable.
+export function readable(color, background) {
+  const bg = d3.rgb(background);
+  if (!d3.color(color)) return color;
+  const contrast = (c) => {
+    const [a, b] = [lum(d3.rgb(c)), lum(bg)];
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  };
+  const step = lum(bg) > 0.2 ? -4 : 4;
+  let c = d3.hcl(color);
+  for (let i = 0; i < 25 && contrast(c) < 3; i++) c = d3.hcl(c.h, c.c, c.l + step);
+  return d3.rgb(c).formatHex();
+}
+
 // Header colors of a hover box: the series color as background, with readable text.
 // Light colors get dark text; other colors get white text, on a background darkened until the contrast is at least 4.
 export function headerColors(color) {
-  const lum = (c) => {
-    const ch = [c.r, c.g, c.b].map((v) => {
-      v /= 255;
-      return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
-    });
-    return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
-  };
   const rgb = d3.rgb(color);
   if (lum(rgb) > 0.42) return { bg: rgb.formatHex(), fg: "#1F2328" };
   let c = d3.hcl(rgb);

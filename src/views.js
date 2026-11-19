@@ -39,8 +39,24 @@ export function makeView(ctx, layer, rows, hidden) {
   else if (layer.type === "smooth") cols = smooth(raw, n, o);
   if (cols !== raw) source = null;
   const view = { cols, n: cols === raw ? n : sizeOf(cols), rows: source };
+  if (o.position === "dodge" && DODGE.includes(layer.type)) view.shift = dodgeShift(ctx, layer, cols, view.n);
   view.hover = hoverOf(ns, layer, view);
   return view;
+}
+
+const DODGE = ["point", "segment", "errorbar"]; // bar dodges with its stack (stats.js)
+
+// Dodge of point, segment and errorbar: each color gets a slot of the category band, in the legend order of all
+// the colors of the plot, so a color has the same place in every category, panel and layer, and a hidden color
+// leaves its slot empty. Returns { axis, frac }: the offset of each row, as a share of the bandwidth.
+function dodgeShift({ kind, colorLevels, colorKind }, layer, cols, n) {
+  const where = `${layer.type}()`;
+  const axis = kind.x === "category" ? "x" : kind.y === "category" && layer.type !== "errorbar" ? "y" : null;
+  if (!axis) throw new Error(`${where}: dodge needs a category ${layer.type === "errorbar" ? "x" : "x or y"} axis`);
+  if (!layer.channels.color?.column) return { axis, frac: new Array(n).fill(0) };
+  if (colorKind !== "ordinal") throw new Error(`${where}: dodge needs color mapped to a category column`);
+  const slots = colorLevels.length;
+  return { axis, frac: Array.from({ length: n }, (_, i) => (colorLevels.indexOf(cols.color[i]) + 0.5) / slots - 0.5), slots };
 }
 
 // The hover anchor (hx, hy) and the label fields of a view, or null for layers without hover.

@@ -81,6 +81,9 @@ draw(plot(rows, { x: "time", y: "value", color: "sensor" }).line().facet("indica
 | Axis range | `x(limits=[0, 10])`; `y(limits=[0, None])` keeps the data bound on the `None` side |
 | Category order | `x(limits=["low", "mid", "high"])` |
 | Log axis, time labels | `y(type="log")`; `x(format="%a %H:%M")` |
+| Set ticks and their text | `x(type="log", breaks=[1, 1.5, 2, 3, 5, 10])`; `y(breaks=[0, 50], labels=["none", "50"])` |
+| Colors side by side in a category | `point(position="dodge")`, `segment(..., position="dodge")`: on a category x or y |
+| Name lines at their ends | `line(direct=True)` with `theme(legend="none")` |
 | Category colors | `color(palette="sakura")`, or `color(values={"a": "red", "b": "#123456"})` |
 | Number colors | `color(scheme="ai")`; diverging: `color(scheme="aiaka", mid=0)` |
 

@@ -5,8 +5,11 @@ import { test } from "node:test";
 import { JSDOM } from "jsdom";
 import { plot } from "../src/builder.js";
 import { figure } from "../src/figure.js";
+import { pick } from "../src/hover.js";
 import { slideFigure } from "../src/interact.js";
 import { renderSVG } from "../src/render.mjs";
+import { ticks } from "../src/scales.js";
+import { textWidth } from "../src/text.js";
 import { FORMATS, STYLES } from "../src/theme.js";
 
 const { document } = new JSDOM("").window;
@@ -335,6 +338,93 @@ test("a long slide title gets smaller text to stay on one line; a screen title k
   assert.equal(sizes(screen)[0], screen.fonts.title);
   const longer = figure(base.line().labels({ title: `${title}, ${title}` }).theme("pastel", { format: "slide" }).spec(), { document });
   assert.ok(sizes(longer).length > 1 && sizes(longer)[0] === longer.fonts.title, "a title that wraps keeps its size");
+});
+
+// --- captions, breaks, dodge, direct labels -------------------------------------------------
+
+const CAPTION = "Dot: value; line: 90% interval. Earthquakes per row, development/test: all earthquakes 120/31, recorded 0 64/12, recorded 1 to 999 30/9, recorded 1,000 to 99,999 22/8, recorded 100,000 or more 4/2.";
+
+test("a long caption wraps at the plot width and keeps its full text", () => {
+  const f = figure(base.line().labels({ caption: CAPTION }).spec(), { document, width: 700 });
+  const lines = f.layout.texts.filter((t) => t.attrs.class === "pt-caption");
+  assert.ok(lines.length >= 2, `caption lines: ${lines.length}`);
+  assert.equal(lines.map((t) => t.text).join(" "), CAPTION);
+  for (const t of lines) assert.ok(t.attrs.x + textWidth(t.text, f.fonts.tick, false, f.theme.metrics) <= f.W, t.text);
+  assert.ok(lines.every((t, i) => i === 0 || t.attrs.y > lines[i - 1].attrs.y), "lines go down");
+  const one = figure(base.line().labels({ caption: "Short" }).spec(), { document, width: 700 });
+  const drop = one.layout.panels[0].innerH - f.layout.panels[0].innerH;
+  assert.ok(Math.abs(drop - (lines.length - 1) * f.fonts.tick * 1.3) < 1, `panels shrink by the extra lines: ${drop}`);
+});
+
+test("breaks set the ticks, and labels name them", () => {
+  const t = ticks("linear", [0, 12], 5, { breaks: [1, 1.5, 10], labels: ["one", "one and a half", "ten"] });
+  assert.deepEqual(t.major, [1, 1.5, 10]);
+  assert.deepEqual(t.major.map(t.format), ["one", "one and a half", "ten"]);
+  assert.deepEqual(t.minor, []);
+  assert.deepEqual(ticks("log", [0.9, 30], 5).major, [1, 2, 5, 10, 20], "fewer than 3 powers of ten: 1-2-5 ticks");
+  assert.deepEqual(ticks("log", [0.5, 2000], 5).major, [1, 10, 100, 1000]);
+  const svg = renderSVG(base.line().x({ type: "log", breaks: [1, 1.5, 2, 3, 5, 10] }).spec());
+  for (const v of ["1.5", "3"]) assert.match(svg, new RegExp(`>${v}</text>`));
+  // Observable Plot thins the labels of a log axis with many ticks (it blanked 5 here): every break keeps its label.
+  const wide = [0.97, 1.6, 3.3, 10.4, 1.05, 11].map((v, i) => ({ v, g: `p${i % 2}`, r: `recorded ${i % 3} to 100,000 or more` }));
+  const logSvg = renderSVG(plot(wide, { x: "v", y: "r" }).point().facet("g").x({ type: "log", limits: [0.89, 11.75], breaks: [1, 1.5, 2, 3, 5, 10] }).theme("paper", { width: 1000, height: 440 }).spec());
+  for (const label of logSvg.matchAll(/<g aria-label="x-axis tick label".*?<\/g>/gs)) assert.deepEqual([...label[0].matchAll(/>([^<]*)<\/text>/g)].map((m) => m[1]), ["1", "1.5", "2", "3", "5", "10"]);
+  assert.throws(() => base.x({ labels: ["a"] }), /labels need breaks/);
+  assert.throws(() => base.x({ breaks: [1, 2], labels: ["a"] }), /labels must have one entry per break/);
+  assert.throws(() => base.x({ breaks: 5 }), /breaks must be a list/);
+  assert.throws(() => renderSVG(plot(rows, { x: "g", y: "v" }).bar().x({ breaks: [1] }).spec()), /breaks apply to number, log and time axes/);
+});
+
+const forest = [];
+for (const [r, row] of ["small", "medium", "large"].entries()) {
+  for (const [m, model] of ["severity", "reference"].entries()) forest.push({ row, model, v: 1 + r + m, lo: 0.5 + r, hi: 2 + r + m });
+}
+const forestPlot = (o = {}) =>
+  plot(forest, { x: "v", y: "row", color: "model" }).segment({ x: "lo", xend: "hi", yend: "row", position: "dodge", ...o }).point({ position: "dodge", ...o });
+
+// The center of each dot in panel px, in data row order.
+function dots(state) {
+  const g = state.panels[0].g.querySelector('g[aria-label="dot"]');
+  const [dx, dy] = (g.querySelector("g[transform]")?.getAttribute("transform").match(/-?[\d.]+/g) ?? [0, 0]).map(Number); // band centering
+  return [...g.querySelectorAll("circle")].map((c) => [+c.getAttribute("cx") + dx, +c.getAttribute("cy") + dy]);
+}
+
+test("dodge puts the colors side by side in each category of y, the same in every row", () => {
+  const f = figure(forestPlot().spec(), { document });
+  const bw = (f.layout.panels[0].innerH / (3 + 0.2)) * 0.8;
+  const d = dots(f);
+  // The legend order is reference, severity: reference takes the upper slot of each row.
+  for (let r = 0; r < 3; r++) assert.ok(Math.abs(d[2 * r][1] - d[2 * r + 1][1] - bw / 2) < 0.01, `row ${r}: ${d[2 * r][1]} ${d[2 * r + 1][1]}`);
+  const links = [...f.panels[0].g.querySelectorAll('g[aria-label="link"] path')].map((p) => +p.getAttribute("d").match(/-?[\d.]+/g)[1]);
+  const ly = f.panels[0].g.querySelector('g[aria-label="link"] g[transform], g[aria-label="link"][transform]')?.getAttribute("transform").match(/-?[\d.]+/g).map(Number)[1] ?? 0;
+  links.forEach((y, i) => assert.ok(Math.abs(y + ly - d[i][1]) < 0.01, "each segment is at the height of its point"));
+  const hit = pick(f, 0, d[3][0], d[3][1]);
+  assert.equal(hit.header, "reference");
+  const hidden = dots(figure(forestPlot().spec(), { document, hidden: new Set(["reference"]) }));
+  assert.ok(Math.abs(hidden[0][1] - d[0][1]) < 0.01, "a hidden color keeps its slot");
+});
+
+test("dodge needs a category axis and a category color; errorbar dodges on x only", () => {
+  assert.throws(() => base.point({ position: "stack" }), /position must be overlay or dodge/);
+  assert.throws(() => renderSVG(base.point({ position: "dodge" }).spec()), /dodge needs a category x or y axis/);
+  assert.throws(() => renderSVG(plot(rows, { x: "g", y: "v", color: "t" }).point({ position: "dodge" }).spec()), /dodge needs color mapped to a category column/);
+  assert.throws(() => renderSVG(plot(rows, { x: "t", ymin: "v", color: "g" }).errorbar({ ymax: 2, position: "dodge" }).spec()), /dodge needs a category x axis/);
+  const svg = renderSVG(plot(rows.filter((r) => r.t < 3), { x: "k", ymin: "v", color: "g" }).errorbar({ ymax: 2, position: "dodge" }).spec());
+  assert.match(svg, /aria-label="rule"/);
+});
+
+test("direct labels name each line at its end, apart from each other", () => {
+  const ends = [];
+  for (const g of ["first model", "second model", "a third, much longer model name"]) for (let t = 0; t <= 10; t++) ends.push({ t, v: t + (g === "first model" ? 0 : 0.02), g });
+  const f = figure(plot(ends, { x: "t", y: "v", color: "g" }).line({ direct: true }).spec(), { document });
+  const texts = [...f.panels[0].g.querySelectorAll('g[aria-label="text"] text')];
+  assert.equal(texts.length, 3);
+  const ys = texts.map((t) => +t.getAttribute("transform").match(/-?[\d.]+/g)[1]).sort((a, b) => a - b);
+  for (let i = 1; i < ys.length; i++) assert.ok(ys[i] - ys[i - 1] >= f.fonts.tick * 1.1, `labels apart: ${ys}`);
+  assert.ok(f.layout.panels[0].mr > 0);
+  const short = figure(plot(ends.map((r) => ({ ...r, g: r.g.slice(0, 3) })), { x: "t", y: "v", color: "g" }).line({ direct: true }).spec(), { document });
+  assert.ok(short.layout.panels[0].mr < f.layout.panels[0].mr, "the margin follows the longest name");
+  assert.equal(figure(base.line().spec(), { document }).layout.panels[0].mr, 0);
 });
 
 test("a method returns a new builder and keeps the old one", () => {

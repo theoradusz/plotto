@@ -7,6 +7,7 @@ any other value is a constant.
 from __future__ import annotations
 
 import json
+from datetime import date, datetime
 
 import numpy as np
 
@@ -17,6 +18,7 @@ GRAMMAR = json.loads(assets.path("grammar.json").read_text())
 THEMES = json.loads(assets.path("theme.json").read_text())
 LAYERS = GRAMMAR["layers"]
 PLOT_CHANNELS = list(dict.fromkeys(ch for layer in LAYERS.values() for ch in layer["channels"]))
+NO_STACK = ("point", "segment", "errorbar")  # layers that dodge but do not stack
 
 
 def plot(data, **mapping) -> Plot:
@@ -66,6 +68,8 @@ class Plot:
                 layer["set"][key] = _constant(key, value, where, columns)
             else:
                 _fail(where, "option", key, ["data", *definition["channels"], *definition["options"]])
+        if layer["set"].get("position") == "stack" and type_ in NO_STACK:
+            raise ValueError(f"{where}: position must be overlay or dodge")
         return self._with(data=tables, layers=[*self._s["layers"], layer])
 
     def line(self, **options):
@@ -168,6 +172,18 @@ class Plot:
             if not isinstance(scale["limits"], (list, tuple)):
                 raise ValueError(f"{where}: limits must be a list, for example [0, 10] or [0, None]")
             scale["limits"] = [None if v is None else to_value(v) for v in scale["limits"]]
+        if "breaks" in scale:
+            breaks = scale["breaks"]
+            if not isinstance(breaks, (list, tuple, np.ndarray)) or not all(_is_break(v) for v in breaks):
+                raise ValueError(f"{where}: breaks must be a list of numbers or dates, for example [1, 2, 5, 10]")
+            scale["breaks"] = [to_value(v) for v in breaks]
+        if "labels" in scale:
+            if "breaks" not in scale:
+                raise ValueError(f"{where}: labels need breaks: one label per break")
+            labels = scale["labels"]
+            if not isinstance(labels, (list, tuple)) or len(labels) != len(scale["breaks"]) or not all(isinstance(v, str) for v in labels):
+                raise ValueError(f"{where}: labels must have one entry per break, as strings")
+            scale["labels"] = list(labels)
         return self._with(scales={**self._s["scales"], name: scale})
 
     def labels(self, **options) -> Plot:
@@ -292,6 +308,13 @@ def _constant(key, value, where, columns):
     if isinstance(value, str) and not kind:
         raise ValueError(f'{where}: "{value}" is not a column. Columns: {", ".join(columns)}')
     return to_value(value)
+
+
+def _is_break(v):
+    """A number or a time (not a bool and not a string): a valid axis break."""
+    if isinstance(v, (bool, np.bool_, str)):
+        return False
+    return isinstance(v, (int, float, np.integer, np.floating, datetime, date, np.datetime64))
 
 
 def _info_entry(pair):

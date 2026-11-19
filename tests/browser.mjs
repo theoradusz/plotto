@@ -19,12 +19,19 @@ for (const sensor of ["sensor A", "sensor B", "sensor C"]) {
 const spectra = [];
 for (let h = 0; h < 24; h++) for (let w = 220; w <= 420; w += 1.4) spectra.push({ wl: w, a: Math.exp(-(((w - 260) / 22) ** 2)) * (1 + h / 24), hour: h });
 
+const forest = [];
+for (const [r, row] of ["small", "medium", "large"].entries()) {
+  for (const [m, model] of ["severity", "reference"].entries()) forest.push({ row, model, v: 1 + r + m, lo: 0.5 + r, hi: 2 + r + m });
+}
+
 const specs = [
   plot(rows, { x: "time", y: "v", color: "series" }).line().hline({ y: 0 }).facet("sensor", { free: "y" }).labels({ title: "Test" }).info({ site: "hayama", run: 15 }).spec(),
   plot(spectra, { x: "wl", y: "a", color: "hour", group: "hour" }).line().spec(),
   plot(rows.slice(0, 60), { x: "time", y: "v", color: "series" }).line().spec(),
+  plot(forest, { x: "v", y: "row", color: "model" }).segment({ x: "lo", xend: "hi", yend: "row", position: "dodge" }).point({ position: "dodge" }).x({ type: "log", breaks: [0.5, 1, 2, 5] }).spec(),
+  plot(rows.slice(0, 120), { x: "time", y: "v", color: "series" }).line({ direct: true }).labels({ caption: "A caption long enough to wrap: ".repeat(8) }).theme("pastel", { legend: "none" }).spec(),
 ];
-const modes = [true, true, false]; // plot 2 is static
+const modes = [true, true, false, true, false]; // plots 2 and 4 are static
 
 const dir = mkdtempSync(join(tmpdir(), "plotto-test-"));
 const js = (await bundle({ cdn: false })).replace(/<\/script/gi, "<\\/script");
@@ -208,6 +215,15 @@ try {
   await click(await b.evaluate("(() => { const r = shadow.querySelector('.pt-key').getBoundingClientRect(); return JSON.stringify([r.left + r.width / 2, r.top + r.height / 2]); })()").then(JSON.parse));
   check("a legend click in the shadow root hides a series", (await lines()) < shown, `${shown} → ${await lines()}`);
   check("render() returns the cleanup", await b.evaluate("typeof cleanup === 'function' && (cleanup(), true)"));
+
+  // A dodged point: the label is the one of the point under the pointer, in its slot.
+  await b.evaluate("document.getElementById('p3').scrollIntoView()");
+  const dot = JSON.parse(await b.evaluate("(() => { const r = document.querySelectorAll('#p3 g[aria-label=dot] circle')[1].getBoundingClientRect(); return JSON.stringify([r.left + r.width / 2, r.top + r.height / 2]); })()"));
+  await b.mouse("mouseMoved", dot[0] - 1, dot[1], { buttons: 0 });
+  await b.mouse("mouseMoved", ...dot, { buttons: 0 });
+  await sleep(150);
+  const dodgeTip = await b.evaluate("document.querySelector('#p3 .pt-tip').textContent");
+  check("hover on a dodged point shows that point", dodgeTip.includes("reference") && !dodgeTip.includes("severity"), dodgeTip);
 
   check("no page errors", b.errors.length === 0, b.errors.join("; "));
 } finally {

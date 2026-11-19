@@ -6,6 +6,21 @@ Write each change under "Unreleased". `scripts/release.sh` moves them to the new
 
 ## Unreleased
 
+### Added
+
+- `point`, `segment` and `errorbar` take `position="dodge"`: each color gets its own slot of the category band, on a category x or y (error bars: x). A color has the same slot in every category, panel and layer, so the intervals of one model always sit with its points.
+- `line(direct=True)` writes the name of each series at the end of its line, in its color, so a plot can do without a legend.
+- `x(breaks=, labels=)` and `y(breaks=, labels=)` set the ticks of a number, log or time axis and their text.
+
+### Changed
+
+- A long caption wraps at the width of the plot, to 4 lines. It was cut at the right edge.
+- A log axis with fewer than three powers of ten in view has ticks at 1, 2 and 5 times each power. It showed only the powers of ten, for example only 1 and 10.
+
+### Fixed
+
+- A log axis shows the label of each tick. On a narrow panel, Observable Plot left some labels empty, for example 5.
+
 ## 0.6.0 – 2026-11-13
 
 ### Added

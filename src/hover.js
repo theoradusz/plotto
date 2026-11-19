@@ -71,17 +71,23 @@ function fieldText(state, f, k) {
 
 // --- points ---------------------------------------------------------------------------------
 
-function nearestPoint({ px, py }, panel, x, y, previous) {
+function nearestPoint({ sx, sy, px, py }, panel, x, y, previous) {
   let best = null;
   let kept = null;
   for (const { layer, view, c } of panel.layers) {
     if (!POINTS.includes(layer.type) || !view.hover || !view.n) continue;
     const { hx, hy } = view.hover;
+    // A dodged point sits off the center of its band by its share of the bandwidth.
+    const shift = view.shift;
+    const step = shift ? ((shift.axis === "x" ? sx : sy).bandwidth ?? 0) : 0;
+    const dx = (k) => (shift?.axis === "x" ? shift.frac[k] * step : 0);
+    const dy = (k) => (shift?.axis === "y" ? shift.frac[k] * step : 0);
     for (let k = 0; k < view.n; k++) {
       if (hx[k] === null || hy[k] === null) continue;
-      const d = Math.hypot(px(hx[k]) - x, py(hy[k]) - y);
+      const [hitX, hitY] = [px(hx[k]) + dx(k), py(hy[k]) + dy(k)];
+      const d = Math.hypot(hitX - x, hitY - y);
       if (d > RADIUS) continue;
-      const hit = { layer, view, c, k, d, x: px(hx[k]), y: py(hy[k]) };
+      const hit = { layer, view, c, k, d, x: hitX, y: hitY };
       if (!best || d < best.d) best = hit;
       if (previous?.layer === layer && previous.k === k) kept = hit;
     }

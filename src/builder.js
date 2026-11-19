@@ -6,6 +6,7 @@ import THEMES from "../theme.json" with { type: "json" };
 
 const LAYERS = GRAMMAR.layers;
 const PLOT_CHANNELS = [...new Set(Object.values(LAYERS).flatMap((l) => l.channels))];
+const NO_STACK = ["point", "segment", "errorbar"]; // layers that dodge but do not stack
 
 export function plot(rows, mapping = {}) {
   const data = [toTable(rows, "plot()")];
@@ -44,6 +45,7 @@ class Builder {
       else if (def.channels.includes(key) || def.options.includes(key)) layer.set[key] = constant(key, value, where, columns);
       else fail(where, "option", key, ["data", ...def.channels, ...def.options]);
     }
+    if (layer.set.position === "stack" && NO_STACK.includes(type)) throw new Error(`${where}: position must be overlay or dodge`);
     return this.#with({ data: tables, layers: [...this.#s.layers, layer] });
   }
 
@@ -97,6 +99,18 @@ class Builder {
     if (scale.limits) {
       if (!Array.isArray(scale.limits)) throw new Error(`${where}: limits must be a list, for example [0, 10] or [0, null]`);
       scale.limits = scale.limits.map((v) => (v === null || v === undefined ? null : toValue(v)));
+    }
+    if (scale.breaks !== undefined) {
+      if (!Array.isArray(scale.breaks) || !scale.breaks.every((v) => typeof v === "number" || v instanceof Date)) {
+        throw new Error(`${where}: breaks must be a list of numbers or dates, for example [1, 2, 5, 10]`);
+      }
+      scale.breaks = scale.breaks.map(toValue);
+    }
+    if (scale.labels !== undefined) {
+      if (scale.breaks === undefined) throw new Error(`${where}: labels need breaks: one label per break`);
+      if (!Array.isArray(scale.labels) || scale.labels.length !== scale.breaks.length || !scale.labels.every((l) => typeof l === "string")) {
+        throw new Error(`${where}: labels must have one entry per break, as strings`);
+      }
     }
     return this.#with({ scales: { ...this.#s.scales, [name]: scale } });
   }

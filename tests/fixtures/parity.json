@@ -411,6 +411,98 @@
           }
         ]
       ]
+    },
+    {
+      "name": "breaks and labels, dodge and direct labels",
+      "calls": [
+        [
+          "plot",
+          [],
+          {
+            "x": "v",
+            "y": "g",
+            "color": "h"
+          }
+        ],
+        [
+          "segment",
+          [],
+          {
+            "x": "t",
+            "xend": "n",
+            "yend": "g",
+            "position": "dodge"
+          }
+        ],
+        [
+          "point",
+          [],
+          {
+            "position": "dodge",
+            "size": 3
+          }
+        ],
+        [
+          "errorbar",
+          [],
+          {
+            "x": "g",
+            "ymin": "t",
+            "ymax": "n",
+            "position": "overlay"
+          }
+        ],
+        [
+          "x",
+          [],
+          {
+            "type": "log",
+            "breaks": [
+              1,
+              1.5,
+              2.25,
+              12345.678
+            ],
+            "labels": [
+              "one",
+              "1.5",
+              "2.25",
+              "max"
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "direct labels",
+      "calls": [
+        [
+          "plot",
+          [],
+          {
+            "x": "t",
+            "y": "v",
+            "color": "g"
+          }
+        ],
+        [
+          "line",
+          [],
+          {
+            "direct": true
+          }
+        ],
+        [
+          "y",
+          [],
+          {
+            "breaks": [
+              0,
+              10
+            ]
+          }
+        ]
+      ]
     }
   ]
 }

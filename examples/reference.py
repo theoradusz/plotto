@@ -56,12 +56,17 @@ OPTION_DOC = {
     "summary": ('"mean" | "median" | "min" | "max" | "sum"', "One row per (x, color, group), with the summary of y"),
     "slope": ("number", "Slope (default 1)"),
     "intercept": ("number", "Intercept (default 0)"),
-    "position": ('"stack" | "dodge" | "overlay"', "How the bars or areas of one x share the space (default stack; dodge for bars only)"),
+    "position": (
+        '"stack" | "dodge" | "overlay"',
+        "How the colors of one category share the space. Bars and areas: stack (default), dodge (bars), overlay. "
+        "Points and segments: overlay (default) or dodge, along the category axis (x or y). Error bars: dodge on a category x.",
+    ),
     "bins": ("number", "About this number of bins, on round values (default 30)"),
     "density": ("bool", "Counts divided by (rows × bin width)"),
     "method": ('"lm" | "loess"', "Linear fit (default) or local regression"),
     "span": ("0–1", "Share of the points in each loess fit (default 0.75)"),
     "band": ("bool", "The 95% band of a linear fit (default True)"),
+    "direct": ("bool", "The name of each line (its group, else its color) right of its last point; with long names on 2 lines"),
 }
 
 # (signature, description, [(parameter, type, description)])
@@ -100,7 +105,7 @@ METHODS = [
         ],
     ),
     (
-        "x(type=None, limits=None, format=None)  ·  y(...)",
+        "x(type=None, limits=None, format=None, breaks=None, labels=None)  ·  y(...)",
         "The position scales.",
         [
             ("type", '"linear" | "log" | "time" | "category"', "Default: from the column type"),
@@ -110,6 +115,8 @@ METHODS = [
                 "The first view. None keeps the data bound on that side. On a category axis: the categories and their order.",
             ),
             ("format", "str", 'A d3-format (numbers, for example ".1f") or d3-time-format (times, for example "%H:%M") pattern'),
+            ("breaks", "list", "The ticks, for example [1, 1.5, 2, 3, 5, 10]. Number, log and time axes; no minor grid lines."),
+            ("labels", "list[str]", "The text of each break, in the order of breaks"),
         ],
     ),
     (
