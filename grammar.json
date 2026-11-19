@@ -14,7 +14,7 @@
     "span": "number",
     "band": "boolean",
     "direct": "boolean",
-    "repel": "boolean"
+    "repel": [true, false, "areas"]
   },
   "layers": {
     "line": { "channels": ["x", "y", "color", "group", "tooltip"], "options": ["size", "alpha", "dash", "summary", "direct"], "requires": ["x", "y"] },
@@ -43,10 +43,16 @@
   "scales": {
     "x": ["type", "limits", "format", "breaks", "labels"],
     "y": ["type", "limits", "format", "breaks", "labels"],
-    "color": ["values", "palette", "scheme", "limits", "mid", "clamp", "breaks", "labels"],
-    "fill": ["values", "palette", "scheme", "limits", "mid", "clamp", "breaks", "labels"]
+    "color": ["values", "palette", "scheme", "limits", "mid", "clamp", "breaks", "labels", "na"],
+    "fill": ["values", "palette", "scheme", "limits", "mid", "clamp", "breaks", "labels", "na"]
   },
   "scaleTypes": ["linear", "log", "time", "category"],
+  "d3Schemes": [
+    "Blues", "Greens", "Greys", "Oranges", "Purples", "Reds",
+    "BuGn", "BuPu", "GnBu", "OrRd", "PuBuGn", "PuBu", "PuRd", "RdPu", "YlGnBu", "YlGn", "YlOrBr", "YlOrRd",
+    "Cividis", "Viridis", "Inferno", "Magma", "Plasma", "Warm", "Cool", "CubehelixDefault", "Turbo",
+    "BrBG", "PRGn", "PiYG", "PuOr", "RdBu", "RdGy", "RdYlBu", "RdYlGn", "Spectral", "Rainbow", "Sinebow"
+  ],
   "facet": ["free", "ncol"],
   "grid": ["free"],
   "free": ["x", "y", "both"],
@@ -54,7 +60,7 @@
   "coord": ["geo"],
   "coordOptions": ["scalebar", "north"],
   "corners": ["bottom-left", "bottom-right", "top-left", "top-right"],
-  "inset": ["x", "y", "at"],
+  "inset": ["x", "y", "at", "title"],
   "theme": ["format", "width", "height", "size", "legend", "aspect"],
   "legend": ["right", "bottom", "none"],
   "info": ["position"],

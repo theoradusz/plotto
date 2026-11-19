@@ -185,6 +185,15 @@ class Plot:
             _fail(where, "palette", palette, list(THEMES["palettes"]))
         if "mid" in options and not isinstance(options["mid"], (int, float)):
             raise ValueError(f"{where}: mid must be a number")
+        scheme = options.get("scheme")
+        d3_names = [n.lower() for n in GRAMMAR["d3Schemes"]]
+        if (
+            scheme is not None
+            and not isinstance(scheme, (list, tuple))
+            and scheme not in THEMES["schemes"]
+            and str(scheme).lower() not in d3_names
+        ):
+            _fail(where, "scheme", scheme, [*THEMES["schemes"], *GRAMMAR["d3Schemes"]])
         scale = dict(options)
         if scale.get("limits") is not None:
             if not isinstance(scale["limits"], (list, tuple)):
@@ -226,18 +235,31 @@ class Plot:
 
     def inset(self, **options) -> Plot:
         """An inset: the panel area at (left, bottom, right, top shares of the panel) shows the extent x × y,
-        for example inset(x=[122.9, 131.4], y=[24.0, 28.6], at=[0.02, 0.6, 0.3, 0.98]). Each call adds one inset."""
+        for example inset(x=[122.9, 131.4], y=[24.0, 28.6], at=[0.02, None, 0.3, 0.98], title="Okinawa"). Each call
+        adds one inset. A None bottom or top gives the box the shape of the extent (map coordinates)."""
         _check_keys(options, GRAMMAR["inset"], "inset()")
         x, y, at = options.get("x"), options.get("y"), options.get("at")
         for name, v in (("x", x), ("y", y)):
             if not isinstance(v, (list, tuple)) or len(v) != 2 or not all(_is_break(n) for n in v) or not to_value(v[0]) < to_value(v[1]):
                 raise ValueError(f"inset(): {name} must be [low, high], for example [122.9, 131.4]")
-        valid = isinstance(at, (list, tuple)) and len(at) == 4 and all(_is_number(n) and 0 <= n <= 1 for n in at)
-        if not valid or at[0] >= at[2] or at[1] >= at[3]:
+
+        # bottom or top can be None: the box then takes the shape of the extent (map coordinates).
+        def share(n):
+            return _is_number(n) and 0 <= n <= 1
+
+        valid = isinstance(at, (list, tuple)) and len(at) == 4 and share(at[0]) and share(at[2]) and at[0] < at[2]
+        valid = valid and all(n is None or share(n) for n in (at[1], at[3])) and not (at[1] is None and at[3] is None)
+        if not valid or (at[1] is not None and at[3] is not None and at[1] >= at[3]):
             raise ValueError(
-                "inset(): at must be [left, bottom, right, top] as shares of the panel (0 to 1), for example [0.02, 0.6, 0.3, 0.98]"
+                "inset(): at must be [left, bottom, right, top] as shares of the panel (0 to 1), for example [0.02, 0.6, 0.3, 0.98]; "
+                "bottom or top can be None"
             )
-        inset = {"x": [to_value(v) for v in x], "y": [to_value(v) for v in y], "at": [to_value(v) for v in at]}
+        title = options.get("title")
+        if title is not None and not isinstance(title, str):
+            raise ValueError("inset(): title must be a string")
+        inset = {"x": [to_value(v) for v in x], "y": [to_value(v) for v in y], "at": [None if v is None else to_value(v) for v in at]}
+        if title:
+            inset["title"] = title
         return self._with(insets=[*self._s["insets"], inset])
 
     def labels(self, **options) -> Plot:
@@ -301,7 +323,8 @@ class Plot:
             if col:
                 for i in range(len(s["data"])):
                     use(i, col)
-        data = [{"columns": {c: to_column(frame[c]) for c in used[i]}} for i, frame in enumerate(s["data"])]
+        precise = _position_columns(s)  # 5 decimals for the positions of a raster, and of every layer in map coordinates
+        data = [{"columns": {c: to_column(frame[c], precise=c in precise[i]) for c in used[i]}} for i, frame in enumerate(s["data"])]
         spec = {
             "version": 1,
             "data": data,
@@ -355,7 +378,7 @@ def _constant(key, value, where, columns):
     kind = GRAMMAR["options"].get(key)
     if key in ("tooltip", "group"):
         raise ValueError(f"{where}: {key} must be a column. Columns: {', '.join(columns)}")
-    if isinstance(kind, list) and value not in kind:
+    if isinstance(kind, list) and not any(value is k if isinstance(k, bool) or isinstance(value, bool) else value == k for k in kind):
         _fail(where, key, value, kind)
     if kind == "number" and (not isinstance(value, (int, float)) or isinstance(value, bool)):
         raise ValueError(f"{where}: {key} must be a number")
@@ -366,6 +389,30 @@ def _constant(key, value, where, columns):
     if isinstance(value, str) and not kind:
         raise ValueError(f'{where}: "{value}" is not a column. Columns: {", ".join(columns)}')
     return to_value(value)
+
+
+POSITIONS = ("x", "y", "xend", "yend", "xmin", "xmax", "ymin", "ymax")
+
+
+def _position_columns(s):
+    """The columns (a set per table) that keep 5 decimals instead of 6 significant digits: the x and y of a raster,
+    and every position channel in map coordinates (coord("geo")), mapped by the layer or inherited from the plot."""
+    geo = (s["coord"] or {}).get("type") == "geo"
+    sets = [set() for _ in s["data"]]
+    for layer in s["layers"]:
+        if not geo and layer["type"] != "raster":
+            continue
+        definition = LAYERS[layer["type"]]
+        table = layer.get("data", 0)
+        for ch in POSITIONS:
+            if ch not in definition["channels"] or ch in layer["set"]:
+                continue
+            plot_column = s["mapping"].get(ch)
+            inherited = plot_column if definition.get("inherit", True) and plot_column in s["data"][table].columns else None
+            column = layer["mapping"].get(ch, inherited)
+            if column is not None:
+                sets[table].add(column)
+    return sets
 
 
 def _check_classes(scale, where):
@@ -420,4 +467,5 @@ def _check_free(free, where):
 
 
 def _fail(where, what, value, valid):
-    raise ValueError(f'{where}: unknown {what} "{value}". Valid: {", ".join(valid)}')
+    names = ", ".join(str(v).lower() if isinstance(v, bool) else str(v) for v in valid)  # true, false as in JS
+    raise ValueError(f'{where}: unknown {what} "{value}". Valid: {names}')

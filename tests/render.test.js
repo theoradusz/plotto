@@ -1,5 +1,6 @@
 // Node tests of the builder, the scales and the static SVG. Run: npm test (UPDATE_SNAPSHOTS=1 npm test writes new snapshots).
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { test } from "node:test";
 import { Resvg } from "@resvg/resvg-js";
@@ -7,11 +8,13 @@ import { JSDOM } from "jsdom";
 import { plot } from "../src/builder.js";
 import { drawPanels, figure } from "../src/figure.js";
 import { pick } from "../src/hover.js";
-import { placeLabels } from "../src/repel.js";
+import { areaCost, placeLabels } from "../src/repel.js";
 import { slideFigure } from "../src/interact.js";
 import { renderSVG } from "../src/render.mjs";
 import { equalize, geoAspect, ticks } from "../src/scales.js";
 import { textWidth } from "../src/text.js";
+import * as d3 from "d3";
+import GRAMMAR from "../grammar.json" with { type: "json" };
 import { FORMATS, STYLES } from "../src/theme.js";
 
 const { document } = new JSDOM("").window;
@@ -593,6 +596,9 @@ test("repel places dense labels without overlaps and clear of the points", () =>
   for (const b of boxes) for (const pt of points) assert.ok(Math.hypot(pt.x - Math.max(b.x0, Math.min(b.x1, pt.x)), pt.y - Math.max(b.y0, Math.min(b.y1, pt.y))) >= pt.r - 1e-9, "a label covers a point");
   assert.ok(spots.some((s) => s.leader), "far labels get a leader line");
   assert.equal(placeLabels([{ x: 50, y: 50 }], [{ w: 20, h: 10 }], [], { x0: 0, y0: 0, x1: 100, y1: 100 }, 10)[0].x, 50 + 10 + 4, "a free label sits right of its anchor");
+  assert.equal(placeLabels([{ x: 150, y: 50 }], [{ w: 20, h: 10 }], [], { x0: 0, y0: 0, x1: 100, y1: 100 }, 10)[0], null, "a point out of view has no label");
+  const inset = figure(plot(islands, { x: "lon", y: "lat" }).point().text({ label: "name", repel: true }).x({ limits: [135, 136] }).y({ limits: [35, 36] }).spec(), { document });
+  assert.deepEqual([...inset.svg.querySelectorAll('g[aria-label="text"] text')].map((t) => t.textContent), ["main 1", "main 2", "main 3"], "the far point is out of view: no label");
   const blocked = placeLabels([{ x: 50, y: 50 }], [{ w: 20, h: 10 }], [], { x0: 0, y0: 0, x1: 100, y1: 100 }, 10, [{ x0: 52, y0: 40, x1: 100, y1: 60 }])[0];
   assert.ok(blocked.x + 10 <= 52 || blocked.y + 5 <= 40 || blocked.y - 5 >= 60, "a label keeps clear of a blocked box (an inset, the scale bar)");
   const svg = renderSVG(plot(islands, { x: "lon", y: "lat" }).point().text({ label: "name", repel: true }).spec());
@@ -606,7 +612,25 @@ test("a raster draws one image of its cells, with the fill colors, through resvg
   for (let j = 0; j < 2; j++) for (let i = 0; i < 3; i++) if (!(i === 2 && j === 1)) cells.push({ lon: 135 + i * 0.5, lat: 35 + j * 0.5, v: i });
   const spec = plot(cells, { x: "lon", y: "lat" }).raster({ fill: "v" }).fill({ breaks: [0, 1, 2], values: ["#FF0000", "#00FF00", "#0000FF"] }).spec();
   const f = figure(spec, { document });
-  assert.equal(f.svg.querySelectorAll('svg[aria-label="raster"] image').length, 1);
+  assert.equal(f.svg.querySelectorAll('svg[aria-label="raster"] use').length, 1);
+  assert.equal(f.svg.querySelectorAll("defs image").length, 1);
+  // Each panel and inset draws only the cells in view; panels with the same cells in view share one image.
+  const insets = plot(cells, { x: "lon", y: "lat" }).raster({ fill: "v" }).inset({ x: [134.8, 135.7], y: [34.8, 35.7], at: [0, 0.6, 0.3, 1] }).inset({ x: [134.8, 135.7], y: [34.8, 35.7], at: [0.7, 0, 1, 0.4] });
+  const svgText = renderSVG(insets.spec());
+  assert.equal(svgText.match(/data:image\/png/g).length, 1, "the panel and both insets see every cell of this small grid: one image");
+  assert.equal(svgText.match(/<use /g).length, 3);
+  // A strongly zoomed inset of a large grid draws its few cells (resvg cannot draw a whole grid scaled up), and the
+  // images of an older view leave the defs.
+  const big = [];
+  for (let j = 0; j < 200; j++) for (let i = 0; i < 200; i++) big.push({ lon: 135 + i * 0.0125, lat: 35 + j / 120, v: (i + j) % 3 });
+  const zoom = plot(big, { x: "lon", y: "lat" }).raster({ fill: "v" }).inset({ x: [135.5, 135.55], y: [35.5, 35.53], at: [0.6, 0.6, 1, 1] }).coord("geo");
+  const zf = figure(zoom.spec(), { document });
+  const sizes = [...zf.svg.querySelectorAll("defs image")].map((im) => +im.getAttribute("width") * +im.getAttribute("height"));
+  assert.ok(Math.min(...sizes) < 400, `the inset image has few cells: ${sizes}`);
+  assert.ok(new Resvg(zf.svg.outerHTML).render().width > 0, "resvg draws it");
+  zf.domains = zf.domains.map((d, i) => (i ? d : { x: [135.1, 135.3], y: [35.1, 35.3] }));
+  drawPanels(zf);
+  assert.equal(zf.svg.querySelectorAll("defs image").length, 2, "one image per panel in view, none left over");
   assert.deepEqual(f.home[0].x, [134.675, 136.325], "the domain covers the cell edges (134.75 to 136.25), with 5% space");
   const png = new Resvg(f.svg.outerHTML).render();
   const box = f.layout.panels[0];
@@ -633,9 +657,113 @@ test("a raster finds its grid in values with 6 significant digits, and refuses c
   assert.equal(y.n, 3);
   assert.deepEqual(x.index.slice(0, 300), Array.from({ length: 300 }, (_, i) => i), "each cell in its own column");
   assert.ok(Math.abs(x.step - 0.0125) < 1e-5, `step ${x.step}`); // the rounding of the first and last values limits it
+  // Gaps and a far cell (an island 1,200 steps away, like Minami-Torishima from Honshu): each value stays on the grid.
+  const island = [...mesh.filter((r) => r.lon < 140 || r.lon > 141.5), { lon: 139.00625 + 1200 * 0.0125, lat: 35.004167, v: 3 }];
+  const g = figure(plot(island, { x: "lon", y: "lat" }).raster({ fill: "v" }).spec(), { document }).grid.panels[0].views[0].grid;
+  assert.equal(g.x.n, 1201);
+  assert.equal(g.x.index.at(-1), 1200);
+  assert.ok(Math.abs(g.x.step - 0.0125) < 1e-6, `step ${g.x.step}`);
+  // The spec keeps 5 decimals for the positions of a raster and of a map (6 significant digits elsewhere).
+  const cell = [{ lon: 153.98125, lat: 24.2875, v: 0.123456789 }];
+  assert.equal(plot(cell, { x: "lon", y: "lat" }).raster({ fill: "v" }).spec().data[0].columns.lon.values[0], 153.98125);
+  assert.equal(plot(cell, { x: "lon", y: "lat" }).raster({ fill: "v" }).spec().data[0].columns.v.values[0], 0.123457);
+  assert.equal(plot(cell, { x: "lon", y: "lat" }).point().coord("geo").spec().data[0].columns.lon.values[0], 153.98125);
+  assert.equal(plot(cell, { x: "lon", y: "lat" }).point().spec().data[0].columns.lon.values[0], 153.981);
   const off = [...mesh.slice(0, 10), { lon: 139.00625 + 3.4 * 0.0125, lat: 35.004167, v: 1 }];
   assert.throws(() => renderSVG(plot(off, { x: "lon", y: "lat" }).raster({ fill: "v" }).spec()), /raster\(\): x = [\d.]+ is not on a regular grid \(step/);
   assert.throws(() => renderSVG(plot(mesh.slice(0, 20), { x: "lon", y: "lat" }).raster({ fill: "v" }).x({ type: "log" }).spec()), /x and y must be number or time axes/);
+});
+
+// --- 0.7.1 fixes ---------------------------------------------------------------------------
+
+test("a band without y bounds spans the full panel height on a category y axis", () => {
+  const f = figure(forestPlot().band({ xmin: 1.5, xmax: 2.5 }).spec(), { document });
+  const rect = f.panels[0].g.querySelector('g[aria-label="rect"] rect');
+  assert.equal(+rect.getAttribute("y"), 0);
+  assert.ok(Math.abs(+rect.getAttribute("height") - f.layout.panels[0].innerH) < 1e-6, rect.outerHTML);
+  const one = figure(forestPlot().band({ xmin: 1.5 }).spec(), { document });
+  const r = one.panels[0].g.querySelector('g[aria-label="rect"] rect');
+  const box = one.layout.panels[0];
+  assert.ok(Math.abs(+r.getAttribute("x") + +r.getAttribute("width") - (box.ml + box.innerW)) < 1e-6, "one bound: the other is the edge of the view");
+});
+
+test("na sets the color of missing values and of values outside a scale", () => {
+  const binned = figure(plot(districts).polygon({ fill: "hh" }).fill({ breaks: [20, 1000], na: "#EEEEEE" }).spec(), { document }).fill;
+  assert.equal(binned.apply(null), "#EEEEEE");
+  assert.equal(binned.apply(10), "#EEEEEE", "below the first break");
+  const ramp = figure(plot(districts).polygon({ fill: "hh" }).fill({ limits: [0, 100], na: "gray" }).spec(), { document });
+  assert.equal(ramp.fill.apply(5000), ramp.theme.colors.gray);
+  const ordinal = figure(base.line().color({ limits: ["a", "b"], na: "#123456" }).spec(), { document });
+  assert.equal(ordinal.color.apply("c"), "#123456");
+  assert.equal(figure(plot(districts).polygon({ fill: "hh" }).fill({ breaks: [20] }).spec(), { document }).fill.apply(null), figure(base.line().spec(), { document }).theme.muted, "the default stays muted");
+  assert.throws(() => renderSVG(base.line().color({ na: "nocolor" }).spec()), /color\(\): na "nocolor" is not a color/);
+});
+
+test("a scheme is checked at the call; d3 names take any case; errors name the scale", () => {
+  assert.throws(() => base.fill({ scheme: "nope" }), /fill\(\): unknown scheme "nope". Valid: ai, .*YlOrRd/);
+  assert.throws(() => base.color({ scheme: "nope" }), /color\(\): unknown scheme "nope"/);
+  const f = figure(plot(districts).polygon({ fill: "hh" }).fill({ scheme: "ylorrd" }).spec(), { document });
+  assert.equal(f.fill.interpolate(0.3), d3.interpolateYlOrRd(0.3));
+  for (const name of GRAMMAR.d3Schemes) assert.equal(typeof d3[`interpolate${name}`], "function", name);
+  assert.throws(() => renderSVG(plot(districts).polygon({ fill: "name" }).fill({ palette: "rainbow" }).spec()), /fill\(\): unknown palette "rainbow"/);
+});
+
+test("the last x tick label stays inside the figure on a map with limits", () => {
+  for (const spec of [islandMap().spec(), islandMap().theme("paper", { width: 1000, height: 600, legend: "bottom" }).spec()]) {
+    const f = figure(spec, { document });
+    const box = f.layout.panels[0];
+    const labels = [...f.panels[0].g.querySelectorAll('g[aria-label="x-axis tick label"] text')];
+    const last = labels.at(-1);
+    const x = box.x + +last.getAttribute("transform").match(/-?[\d.]+/)[0];
+    assert.equal(last.textContent, "136.0°E");
+    assert.ok(x + textWidth(last.textContent, f.fonts.tick, false, f.theme.metrics) / 2 <= f.W - 1, `${x} in ${f.W}`);
+  }
+});
+
+test("an inset can have a title, and a height from its extent", () => {
+  const p = islandMap().inset({ x: [127, 128.5], y: [25.8, 26.8], at: [0.02, null, 0.32, 0.98], title: "Okinawa" });
+  const f = figure(p.spec(), { document });
+  const inset = f.layout.panels[1];
+  assert.ok(Math.abs(inset.innerH / inset.innerW - geoAspect({ x: [127, 128.5], y: [25.8, 26.8] })) < 1e-9, "the box has the shape of the extent");
+  const drawn = equalize(f.domains[1], inset.innerW, inset.innerH);
+  assert.ok(Math.abs(drawn.x[0] - 127) < 1e-9 && Math.abs(drawn.y[1] - 26.8) < 1e-9, "so the extent does not grow");
+  assert.equal(Math.round(inset.y), Math.round(f.layout.panels[0].y + 0.02 * f.layout.panels[0].innerH), "the top stays at 0.98");
+  assert.equal(f.svg.querySelector(".pt-inset-title").textContent, "Okinawa");
+  assert.throws(() => renderSVG(plot(islands, { x: "lon", y: "lat" }).point().inset({ x: [0, 1], y: [0, 1], at: [0, null, 0.3, 0.9] }).spec()), /null bottom or top needs map coordinates/);
+  assert.throws(() => base.inset({ x: [0, 1], y: [0, 1], at: [0, null, 0.3, null] }), /bottom or top can be null/);
+});
+
+test('repel "areas" moves labels off filled areas, holes and raster cells when it can', () => {
+  const outer = [[0, 0], [100, 0], [100, 100], [0, 100], [0, 0]];
+  const hole = [[40, 40], [60, 40], [60, 60], [40, 60], [40, 40]];
+  const cost = areaCost([{ rings: [outer, hole], filled: true }, { rect: { x0: 150, y0: 0, x1: 170, y1: 20 } }], { x0: 0, y0: 0, x1: 200, y1: 200 });
+  assert.equal(cost({ x0: 10, y0: 10, x1: 30, y1: 30 }), 1);
+  assert.equal(cost({ x0: 120, y0: 120, x1: 140, y1: 140 }), 0);
+  assert.equal(cost({ x0: 44, y0: 44, x1: 56, y1: 56 }), 0, "a hole is free");
+  assert.equal(cost({ x0: 152, y0: 2, x1: 168, y1: 18 }), 1, "a raster cell");
+  const land = { type: "FeatureCollection", features: [{ type: "Feature", properties: { v: 1 }, geometry: { type: "Polygon", coordinates: [square(135, 35, 1)] } }] };
+  const town = [{ lon: 135.9, lat: 35.5, name: "Town" }];
+  const map = (repel) => plot(land).polygon({ fill: "v" }).point({ data: town, x: "lon", y: "lat" }).text({ data: town, x: "lon", y: "lat", label: "name", repel }).x({ limits: [135, 137] }).coord("geo");
+  const label = (repel) => {
+    const f = figure(map(repel).spec(), { document });
+    const t = f.panels[0].g.querySelector('g[aria-label="text"] text');
+    const [x] = t.getAttribute("transform").match(/-?[\d.]+/g).map(Number);
+    return { left: x - textWidth("Town", f.fonts.tick, false, f.theme.metrics) / 2, edge: f.panels[0].plot.scale("x").apply(136) };
+  };
+  const on = label(true);
+  assert.ok(on.left < on.edge, "repel=true: right of the point, on the area");
+  const off = label("areas");
+  assert.ok(off.left >= off.edge, `repel="areas": off the area (${off.left} ≥ ${off.edge})`);
+});
+
+test("a PNG draws a layer that is all outside the view (resvg panicked on it)", () => {
+  // A panic aborts the process, so the PNG is made in a child process.
+  // The inset shows an area west of every point: the content of its clipped groups is all outside their clip.
+  const east = plot(islands.slice(0, 3), { x: "lon", y: "lat" }).point().text({ label: "name" }).coord("geo");
+  const spec = JSON.stringify(east.inset({ x: [130, 131], y: [35, 36], at: [0, 0, 0.3, 0.3] }).spec());
+  const code = `import { renderPNG } from "${new URL("../src/render.mjs", import.meta.url).href}"; process.stdout.write(String(renderPNG(${spec}).length));`;
+  const out = execFileSync(process.execPath, ["--input-type=module", "-e", code], { encoding: "utf8" });
+  assert.ok(+out > 1000, `PNG bytes: ${out}`);
 });
 
 test("a method returns a new builder and keeps the old one", () => {

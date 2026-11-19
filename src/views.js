@@ -67,10 +67,12 @@ function dodgeShift({ kind, colorLevels, colorKind }, layer, cols, n) {
   return { axis, frac: Array.from({ length: n }, (_, i) => (colorLevels.indexOf(cols.color[i]) + 0.5) / slots - 0.5), slots };
 }
 
-// The regular grid of a raster: per axis the first cell center, the step and the cell count, and the cell index of
-// each row (or -1). The data has 6 significant digits (0.0125° comes as 0.012 or 0.013), so the step is the mean of
-// the gaps between neighbouring values over the steps that each gap spans, refined twice; a value more than a quarter
-// of a step off the grid is an error.
+// The regular grid of a raster: per axis the origin (the center of cell 0), the step, the cell count and the cell index
+// of each row (or -1). The values can be rounded (6 significant digits put a 1 km mesh off by up to 4% of a step) and
+// the grid can have gaps or far cells (an island), so the grid is a least-squares fit of value = origin + index × step
+// over all distinct values: the index of each value counts the steps from its neighbour, with the local step (the
+// mean of the gaps of about one step, whose rounding errors cancel along a run of cells). A value more than a
+// quarter of a step off the fitted grid is an error.
 function rasterGrid(xs, ys) {
   const axis = (values, name) => {
     const u = [...new Set(values.filter((v) => v !== null && Number.isFinite(v)))].sort((a, b) => a - b);
@@ -79,16 +81,20 @@ function rasterGrid(xs, ys) {
       return { lo, step: 1, n: 1, edges: [lo - 0.5, lo + 0.5], index: values.map((v) => (v === null ? -1 : 0)) };
     }
     const gaps = d3.pairs(u, (a, b) => b - a);
-    let step = d3.median(gaps);
-    for (let k = 0; k < 3; k++) step = d3.sum(gaps) / d3.sum(gaps, (g) => Math.max(1, Math.round(g / step)));
-    const lo = u[0];
+    const median = d3.median(gaps);
+    const local = d3.mean(gaps.filter((g) => g > 0.5 * median && g < 1.5 * median));
+    const steps = [0];
+    for (const g of gaps) steps.push(steps.at(-1) + Math.max(1, Math.round(g / local)));
+    const [mi, mv] = [d3.mean(steps), d3.mean(u)];
+    const step = d3.sum(steps, (i, k) => (i - mi) * (u[k] - mv)) / d3.sum(steps, (i) => (i - mi) ** 2);
+    const lo = mv - step * mi;
     const index = values.map((v) => {
       if (v === null || !Number.isFinite(v)) return -1;
-      const i = Math.round((v - lo) / step);
-      if (Math.abs((v - lo) / step - i) > 0.25) throw new Error(`raster(): ${name} = ${v} is not on a regular grid (step ${d3.format(".6~g")(step)} from ${lo})`);
+      const i = Math.round((v - lo) / step) + 0; // + 0: no -0
+      if (Math.abs((v - lo) / step - i) > 0.25) throw new Error(`raster(): ${name} = ${v} is not on a regular grid (step ${d3.format(".6~g")(step)} from ${d3.format(".8~g")(lo)})`);
       return i;
     });
-    const n = Math.round((u.at(-1) - lo) / step) + 1;
+    const n = steps.at(-1) + 1;
     return { lo, step, n, edges: [lo - step / 2, lo + (n - 0.5) * step], index };
   };
   return { x: axis(xs, "x"), y: axis(ys, "y") };

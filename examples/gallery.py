@@ -362,7 +362,8 @@ def map_layers():
 
 
 def map_details():
-    """Map details: inset() shows a distant area (here the island) in a box of the panel at its own extent;
+    """Map details: inset() shows a distant area (here the island) in a box of the panel at its own extent, with a
+    title; a None top gives the box the shape of the extent;
     coord("geo", scalebar=True, north=True) adds a scale bar and a north arrow; text(repel=True) places the town
     names clear of each other and of the points, with a leader line when a name has to move away."""
     towns = load("district_towns").merge(
@@ -376,7 +377,7 @@ def map_details():
         .text(data=hit, x="lon", y="lat", label="name", repel=True)
         .x(limits=[139, 140.5])
         .y(limits=[35, 36])
-        .inset(x=[140.52, 140.7], y=[35.02, 35.18], at=[0.8, 0.02, 0.98, 0.25])
+        .inset(x=[140.52, 140.7], y=[35.02, 35.18], at=[0.78, 0.02, 0.98, None], title="Island")
         .coord("geo", scalebar=True, north=True)
         .labels(title="Towns with 1,000 or more households without water", caption="The island is in the inset, bottom right.")
     )
@@ -385,7 +386,8 @@ def map_details():
 def shaking():
     """A raster under outlines: raster(x=, y=, fill=) draws a regular grid of cells (one row per cell center) as one
     image, colored by the fill scale; here made-up seismic intensity in the classes of the JMA scale. The outages are
-    points on the color scale, so one figure shows the shaking and the outages, each with its legend."""
+    points on the color scale, so one figure shows the shaking and the outages, each with its legend. The names of the
+    worst towns take repel="areas": they keep off the shaken cells when they can."""
     lon, lat = np.meshgrid(np.arange(139.0125, 140.5, 0.025), np.arange(35 + 1 / 120, 36, 1 / 60))
     distance = np.hypot((lon - 139.35) * np.cos(np.radians(35.5)), lat - 35.25).ravel()
     grid = pd.DataFrame({"lon": lon.ravel(), "lat": lat.ravel(), "intensity": 6.9 - 6.5 * distance})
@@ -401,6 +403,7 @@ def shaking():
         .polygon(data=districts(), color="gray", size=0.8)
         .point(data=towns, x="lon", y="lat", color="outage", size=4)
         .fill(breaks=[3.5, 4.5, 5.0, 5.5, 6.0, 6.5], labels=["4", "5-", "5+", "6-", "6+", "7"], scheme="yuhi")
+        .text(data=towns[towns.without_water >= 10000], x="lon", y="lat", label="name", repel="areas")
         .color(values=["#BDBDBD", "#6A3D9A", "#1A1238"])
         .coord("geo", scalebar=True)
         .labels(title="Shaking and outages", fill="seismic intensity", color="households without water")

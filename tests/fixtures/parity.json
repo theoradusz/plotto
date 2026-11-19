@@ -1012,6 +1012,80 @@
           }
         ]
       ]
+    },
+    {
+      "name": "0.7.1: na, any-case d3 scheme, inset title and open edge, repel areas",
+      "calls": [
+        [
+          "plot",
+          [],
+          {
+            "x": "t",
+            "y": "v",
+            "color": "g"
+          }
+        ],
+        [
+          "point",
+          [],
+          {}
+        ],
+        [
+          "text",
+          [],
+          {
+            "label": "h",
+            "repel": "areas"
+          }
+        ],
+        [
+          "color",
+          [],
+          {
+            "na": "#EEEEEE"
+          }
+        ],
+        [
+          "fill",
+          [],
+          {
+            "scheme": "ylorrd",
+            "breaks": [
+              0,
+              1
+            ],
+            "na": "gray"
+          }
+        ],
+        [
+          "coord",
+          [
+            "geo"
+          ],
+          {}
+        ],
+        [
+          "inset",
+          [],
+          {
+            "x": [
+              127,
+              128.5
+            ],
+            "y": [
+              25.8,
+              26.8
+            ],
+            "at": [
+              0.02,
+              null,
+              0.3,
+              0.98
+            ],
+            "title": "Okinawa"
+          }
+        ]
+      ]
     }
   ]
 }

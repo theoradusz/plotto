@@ -6,6 +6,28 @@ Write each change under "Unreleased". `scripts/release.sh` moves them to the new
 
 ## Unreleased
 
+### Added
+
+- `color(na=)` and `fill(na=)`: the color of missing values and of values outside the scale (below the first break, outside the limits). It was always `muted`, which is near-black in the `paper` style.
+- `inset(title=)`: a title inside the inset frame.
+- `inset(at=[left, None, right, top])`: in map coordinates, a `None` bottom or top gives the box the shape of its extent.
+- `text(repel="areas")`: labels also keep off polygons and raster cells when they can.
+
+### Changed
+
+- A d3 scheme name takes any case: `ylorrd` is `YlOrRd`. An unknown scheme is an error at the call, with the list of schemes.
+- The x and y of a raster, and the positions of a map (`coord("geo")`), keep 5 decimals in the spec instead of 6 significant digits.
+- A raster draws only the cells in view, as a compressed image defined once per figure. A saved SVG with a large mesh and insets was 77 MB; it is now about the size of the PNG.
+- A repelled label whose point is out of view (outside an inset, or zoomed out) is not drawn.
+
+### Fixed
+
+- `band()` without y bounds spans the full panel height on a category y axis (it covered the first two categories only); the same on x.
+- The raster grid fit works on a grid with gaps or a far cell (Minami-Torishima on a 1 km mesh of Japan).
+- The PNG of a figure with a clipped layer that is all out of view (the main points in an inset) no longer stops resvg.
+- Errors of a `fill()` scale say `fill()`, not `color()`.
+- The last x tick label of a map (at the right limit) is no longer cut at the right edge.
+
 ## 0.7.0 – 2026-11-19
 
 ### Added

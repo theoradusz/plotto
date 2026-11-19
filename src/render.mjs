@@ -8,7 +8,7 @@ import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
-import { toSVG } from "./figure.js";
+import { figure, toSVG } from "./figure.js";
 import { firstFamily, resolveTheme } from "./theme.js";
 
 const { document } = new JSDOM("").window;
@@ -18,10 +18,27 @@ export function renderSVG(spec) {
 }
 
 export function renderPNG(spec, scale = 2) {
-  const svg = renderSVG(spec);
+  const { svg: el } = figure(spec, { document });
+  resvgSafe(el);
+  const svg = el.outerHTML;
   const font = firstFamily(resolveTheme(spec.theme).font);
   const resvg = new Resvg(svg, { fitTo: { mode: "zoom", value: scale }, font: { loadSystemFonts: true, defaultFontFamily: font } });
   return resvg.render().asPng();
+}
+
+// resvg 2.6 panics when all the content of a clipped group lies outside its clip (for example the points of the main
+// map in an inset that does not show them, or a layer outside the limits). Each clipped group gets an invisible rect
+// (fill-opacity 0) of its clip box, which resvg counts. For the PNG only: the SVG does not change.
+export function resvgSafe(svg) {
+  for (const g of svg.querySelectorAll("[clip-path]")) {
+    const id = g.getAttribute("clip-path").match(/url\(#(.+)\)/)?.[1];
+    const box = id && svg.querySelector(`clipPath[id="${id}"] rect`);
+    if (!box) continue;
+    const rect = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "rect");
+    for (const a of ["x", "y", "width", "height"]) rect.setAttribute(a, box.getAttribute(a) ?? 0);
+    rect.setAttribute("fill-opacity", 0);
+    g.append(rect);
+  }
 }
 
 // The browser bundle: src/ as one ES module that sets window.plotto.
