@@ -73,7 +73,11 @@ OPTION_DOC = {
     "span": ("0–1", "Share of the points in each loess fit (default 0.75)"),
     "band": ("bool", "The 95% band of a linear fit (default True)"),
     "direct": ("bool", "The name of each line (its group, else its color) right of its last point; with long names on 2 lines"),
-    "repel": ("bool", "Each label moves to a free place near its point, clear of other labels and points; leader lines for far labels"),
+    "repel": (
+        'bool | "areas"',
+        "Each label moves to a free place near its point, clear of other labels and points; leader lines for far labels. "
+        '"areas": also off polygons and raster cells when it can',
+    ),
 }
 
 # (signature, description, [(parameter, type, description)])
@@ -140,7 +144,11 @@ METHODS = [
                 "Colors in order, or category → color. Theme color names or CSS colors. With breaks: one color per break.",
             ),
             ("palette", "str", "Category colors: " + ", ".join(THEMES["palettes"])),
-            ("scheme", "str | list", "Number colors: " + ", ".join(THEMES["schemes"]) + ", or a d3 scheme (viridis, magma, …)"),
+            (
+                "scheme",
+                "str | list",
+                "Number colors: " + ", ".join(THEMES["schemes"]) + ", or a d3 scheme in any case (viridis, YlOrRd, …)",
+            ),
             ("limits", "[low, high] | list", "The range of a number scale (None keeps the data bound), or the categories and their order"),
             ("mid", "number", "Diverging: the value at the center color"),
             ("clamp", "bool", "Values outside the limits (or below the first break) take the end color (default: muted gray)"),
@@ -150,6 +158,7 @@ METHODS = [
                 "Classes of a number or time column: [b0, b1), …, [bn, ∞), for example [0, 50, 1000, 10000]. A stepped legend.",
             ),
             ("labels", "list[str]", "With breaks: a name per class, shown on the steps of the legend"),
+            ("na", "color", "The color of missing values and of values outside the scale (default: muted)"),
         ],
     ),
     (
@@ -162,11 +171,17 @@ METHODS = [
         ],
     ),
     (
-        "inset(x=, y=, at=)",
+        "inset(x=, y=, at=, title=None)",
         "An inset panel: the extent x × y in a box of each panel, for distant areas (islands). Each call adds one.",
         [
             ("x, y", "[low, high]", "The extent of the inset"),
-            ("at", "[left, bottom, right, top]", "The box, in shares of the panel (0 to 1) from its bottom left"),
+            (
+                "at",
+                "[left, bottom, right, top]",
+                "The box, in shares of the panel (0 to 1) from its bottom left. In map coordinates, "
+                "bottom or top can be None: the box takes the shape of the extent",
+            ),
+            ("title", "str", "A title inside the frame, at the top left"),
         ],
     ),
     (

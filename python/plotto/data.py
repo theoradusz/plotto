@@ -18,8 +18,10 @@ def to_frame(data, where):
     raise TypeError(f"{where}: data must be a pandas DataFrame, a list of row dicts or a GeoJSON FeatureCollection")
 
 
-def to_column(series: pd.Series) -> dict:
-    """One spec column: {"type": "number" | "time" | "string" | "geometry", "values": [...], "levels": [...]}."""
+def to_column(series: pd.Series, precise=False) -> dict:
+    """One spec column: {"type": "number" | "time" | "string" | "geometry", "values": [...], "levels": [...]}.
+
+    precise: numbers keep 5 decimals (positions in map coordinates and of a raster) instead of 6 significant digits."""
     if _is_geometry(_first(series)):
         return {"type": "geometry", "values": [None if _missing(v) else to_geometry(v) for v in series]}
     if isinstance(series.dtype, pd.CategoricalDtype):
@@ -33,7 +35,8 @@ def to_column(series: pd.Series) -> dict:
     if pd.api.types.is_bool_dtype(series):
         return {"type": "string", "values": ["true" if v else "false" for v in series]}
     if pd.api.types.is_numeric_dtype(series):
-        return {"type": "number", "values": [to_value(v) for v in series.to_numpy()]}
+        convert = to_coordinate if precise else to_value
+        return {"type": "number", "values": [convert(v) for v in series.to_numpy()]}
     return {"type": "string", "values": [None if v is None or (isinstance(v, float) and math.isnan(v)) else str(v) for v in series]}
 
 
@@ -61,7 +64,7 @@ def to_geometry(v) -> dict:
 
     def rounded(c):
         if not len(c) or _number(c[0]) or _number(c[0][0]):  # a position, or a ring of positions: one array call
-            return np.round(np.asarray(c, dtype=float), 5).tolist()
+            return (np.floor(np.asarray(c, dtype=float) * 1e5 + 0.5) / 1e5).tolist()  # as Math.round in JS
         return [rounded(part) for part in c]
 
     return {"type": g["type"], "coordinates": rounded(g["coordinates"])}
@@ -69,6 +72,16 @@ def to_geometry(v) -> dict:
 
 def _number(v) -> bool:
     return isinstance(v, (int, float, np.integer, np.floating)) and not isinstance(v, bool)
+
+
+def to_coordinate(v):
+    """A number with 5 decimals (about 1 m in degrees), rounded as Math.round in JS; None for NaN."""
+    if isinstance(v, (np.integer, int)) and not isinstance(v, bool):
+        return int(v)
+    v = float(v)
+    if math.isnan(v):
+        return None
+    return v if v.is_integer() else math.floor(v * 1e5 + 0.5) / 1e5
 
 
 def to_value(v):

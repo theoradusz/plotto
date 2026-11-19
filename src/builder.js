@@ -100,6 +100,9 @@ class Builder {
     if (options.type !== undefined && !GRAMMAR.scaleTypes.includes(options.type)) fail(where, "type", options.type, GRAMMAR.scaleTypes);
     if (options.palette !== undefined && !Array.isArray(options.palette) && !(options.palette in THEMES.palettes)) fail(where, "palette", options.palette, Object.keys(THEMES.palettes));
     if (options.mid !== undefined && typeof options.mid !== "number") throw new Error(`${where}: mid must be a number`);
+    const scheme = options.scheme;
+    const d3Name = typeof scheme === "string" && GRAMMAR.d3Schemes.find((n) => n.toLowerCase() === scheme.toLowerCase());
+    if (scheme !== undefined && !Array.isArray(scheme) && !(scheme in THEMES.schemes) && !d3Name) fail(where, "scheme", scheme, [...Object.keys(THEMES.schemes), ...GRAMMAR.d3Schemes]);
     const scale = { ...options };
     if (scale.limits) {
       if (!Array.isArray(scale.limits)) throw new Error(`${where}: limits must be a list, for example [0, 10] or [0, null]`);
@@ -146,10 +149,16 @@ class Builder {
         throw new Error(`inset(): ${name} must be [low, high], for example [122.9, 131.4]`);
       }
     }
-    if (!Array.isArray(at) || at.length !== 4 || !at.every((n) => typeof n === "number" && n >= 0 && n <= 1) || at[0] >= at[2] || at[1] >= at[3]) {
-      throw new Error("inset(): at must be [left, bottom, right, top] as shares of the panel (0 to 1), for example [0.02, 0.6, 0.3, 0.98]");
+    // bottom or top can be null: the box then takes the shape of the extent (map coordinates).
+    const share = (n) => typeof n === "number" && n >= 0 && n <= 1;
+    const valid = Array.isArray(at) && at.length === 4 && share(at[0]) && share(at[2]) && at[0] < at[2] && [at[1], at[3]].every((n) => n === null || share(n));
+    if (!valid || (at[1] === null && at[3] === null) || (at[1] !== null && at[3] !== null && at[1] >= at[3])) {
+      throw new Error("inset(): at must be [left, bottom, right, top] as shares of the panel (0 to 1), for example [0.02, 0.6, 0.3, 0.98]; bottom or top can be null");
     }
-    return this.#with({ insets: [...this.#s.insets, { x: x.map(toValue), y: y.map(toValue), at: at.map(toValue) }] });
+    const { title } = options;
+    if (title !== undefined && title !== null && typeof title !== "string") throw new Error("inset(): title must be a string");
+    const inset = { x: x.map(toValue), y: y.map(toValue), at: at.map((n) => (n === null ? null : toValue(n))), ...(title ? { title } : {}) };
+    return this.#with({ insets: [...this.#s.insets, inset] });
   }
 
   labels(options = {}) {
@@ -186,7 +195,13 @@ class Builder {
     for (const col of [s.facet?.wrap, s.facet?.rows, s.facet?.cols]) {
       if (col) used.forEach((set, i) => col in s.data[i].columns && set.add(col));
     }
-    const data = s.data.map((t, i) => ({ columns: Object.fromEntries([...used[i]].map((c) => [c, t.columns[c]])) }));
+    // Position columns of a raster, and of every layer in map coordinates, keep 5 decimals (about 1 m in degrees).
+    const precise = positionColumns(s);
+    const out = (col, exact) => {
+      const { exact: values, ...column } = col;
+      return exact && values ? { ...column, values: values.map((v) => (v === null ? null : Math.round(v * GEO_DIGITS) / GEO_DIGITS)) } : column;
+    };
+    const data = s.data.map((t, i) => ({ columns: Object.fromEntries([...used[i]].map((c) => [c, out(t.columns[c], precise[i].has(c))])) }));
     return { version: 1, data, mapping: s.mapping, layers: s.layers, facet: s.facet, scales: s.scales, labels: s.labels, ...(s.info ? { info: s.info } : {}), ...(s.coord ? { coord: s.coord } : {}), ...(s.insets.length ? { insets: s.insets } : {}), theme: s.theme };
   }
 }
@@ -208,8 +223,30 @@ function toTable(rows, where) {
     const type = first instanceof Date ? "time" : typeof first === "number" ? "number" : "string";
     const values = raw.map((v) => (v === null || Number.isNaN(v) ? null : type === "string" ? String(v) : toValue(v)));
     columns[name] = { type, values };
+    // Numbers also keep their exact values, for the columns that spec() writes with 5 decimals (positionColumns).
+    if (type === "number") columns[name].exact = raw.map((v) => (v === null || Number.isNaN(v) ? null : v));
   }
   return { columns };
+}
+
+// The columns (a Set per table) that keep 5 decimals instead of 6 significant digits: the x and y of a raster, and
+// every position channel in map coordinates (coord("geo")), mapped by the layer or inherited from the plot.
+const POSITIONS = ["x", "y", "xend", "yend", "xmin", "xmax", "ymin", "ymax"];
+function positionColumns(s) {
+  const geo = s.coord?.type === "geo";
+  const sets = s.data.map(() => new Set());
+  for (const layer of s.layers) {
+    if (!geo && layer.type !== "raster") continue;
+    const def = LAYERS[layer.type];
+    const table = layer.data ?? 0;
+    for (const ch of POSITIONS) {
+      if (!def.channels.includes(ch) || ch in layer.set) continue;
+      const inherited = def.inherit !== false && s.mapping[ch] in s.data[table].columns ? s.mapping[ch] : undefined;
+      const column = layer.mapping[ch] ?? inherited;
+      if (column) sets[table].add(column);
+    }
+  }
+  return sets;
 }
 
 // A GeoJSON geometry object: { type, coordinates }.

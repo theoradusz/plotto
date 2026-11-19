@@ -1,7 +1,7 @@
 // Scales: axis types, domains, ticks, tick labels and the color scale.
 // Time values are wall-clock epoch ms, drawn with UTC functions, so the labels show the clock time of the data.
 import * as d3 from "d3";
-import { colorOf, interpolator, palette } from "./theme.js";
+import { colorOf, colorTokens, interpolator, palette } from "./theme.js";
 
 export const AXIS_CHANNELS = { x: ["x", "xmin", "xmax", "xend"], y: ["y", "ymin", "ymax", "yend"] };
 const EXPAND = 0.05; // 5% space on each side of a continuous axis, as in ggplot
@@ -157,14 +157,18 @@ export function colorScale(ns, channel = "color") {
   const type = cols[0].type;
   const all = cols.flatMap((c) => c.values).filter((v) => v !== null);
   const resolve = (c) => colorOf(theme, c) ?? c;
-  if (opts.breaks && type === "string") throw new Error(`${channel}(): breaks apply to a number or time column, not to "${column}"`);
-  if (opts.breaks) return binnedScale(theme, opts, { channel, column, type });
+  const where = `${channel}()`;
+  // na: the color of a missing value and of a value outside the scale (default muted).
+  const na = opts.na === undefined ? theme.muted : colorOf(theme, opts.na);
+  if (!na) throw new Error(`${where}: na "${opts.na}" is not a color. Theme colors: ${colorTokens(theme).join(", ")}, or a CSS color`);
+  if (opts.breaks && type === "string") throw new Error(`${where}: breaks apply to a number or time column, not to "${column}"`);
+  if (opts.breaks) return binnedScale(theme, opts, { channel, column, type, na });
 
   if (type === "string") {
     const levels = cols.find((c) => c.levels)?.levels;
     const seen = new Set(all);
     const domain = opts.limits ?? (levels ? levels.filter((v) => seen.has(v)) : [...seen].sort(naturalOrder));
-    const colors = opts.palette ? palette(theme, opts.palette) : theme.palette;
+    const colors = opts.palette ? palette(theme, opts.palette, where) : theme.palette;
     const values = opts.values;
     const pick = Array.isArray(values)
       ? (v, i) => resolve(values[i % values.length])
@@ -172,32 +176,31 @@ export function colorScale(ns, channel = "color") {
         ? (v, i) => resolve(values[v] ?? colors[i % colors.length])
         : (v, i) => colors[i % colors.length];
     const map = new Map(domain.map((v, i) => [v, pick(v, i)]));
-    return { kind: "ordinal", channel, column, domain, apply: (v) => map.get(v) ?? theme.muted };
+    return { kind: "ordinal", channel, column, domain, na, apply: (v) => map.get(v) ?? na };
   }
 
   const [lo, hi] = limitsOf(opts.limits, d3.extent(all));
-  const interpolate = interpolator(theme, opts.values ?? opts.scheme ?? theme.scheme);
+  const interpolate = interpolator(theme, opts.values ?? opts.scheme ?? theme.scheme, where);
   // mid: a diverging scale, with mid at the center of the scheme.
   const mid = opts.mid;
   const t = (v) => (mid === undefined ? (v - lo) / (hi - lo || 1) : v < mid ? 0.5 * ((v - lo) / (mid - lo || 1)) : 0.5 + 0.5 * ((v - mid) / (hi - mid || 1)));
   const inside = (v) => v >= lo && v <= hi;
-  const apply = (v) => (v === null ? theme.muted : opts.clamp || inside(v) ? interpolate(Math.max(0, Math.min(1, t(v)))) : theme.muted);
+  const apply = (v) => (v === null ? na : opts.clamp || inside(v) ? interpolate(Math.max(0, Math.min(1, t(v)))) : na);
   const ramp = (u) => apply(lo + u * (hi - lo));
-  return { kind: "continuous", channel, column, domain: [lo, hi], type, interpolate, apply, ramp };
+  return { kind: "continuous", channel, column, domain: [lo, hi], type, interpolate, apply, ramp, na };
 }
 
 // Classes set by the breaks alone: [b0, b1), …, [b(n-1), bn), [bn, ∞), so the colors do not depend on the data.
 // The colors are the values (one per class), or the scheme at the middle of each class (i + 0.5) / k.
-// A value below b0 is muted (clamp: the first class); null is muted.
-function binnedScale(theme, opts, { channel, column, type }) {
+// A value below b0 and null take the na color (clamp: a value below b0 takes the first class).
+function binnedScale(theme, opts, { channel, column, type, na }) {
   const breaks = opts.breaks;
   const k = breaks.length;
-  const colors = Array.isArray(opts.values)
-    ? opts.values.map((c) => colorOf(theme, c) ?? c)
-    : d3.range(k).map((i) => interpolator(theme, opts.scheme ?? theme.scheme)((i + 0.5) / k));
+  const scheme = Array.isArray(opts.values) ? null : interpolator(theme, opts.scheme ?? theme.scheme, `${channel}()`);
+  const colors = scheme ? d3.range(k).map((i) => scheme((i + 0.5) / k)) : opts.values.map((c) => colorOf(theme, c) ?? c);
   const classOf = (v) => (v === null || v === undefined || Number.isNaN(v) ? -1 : v < breaks[0] ? (opts.clamp ? 0 : -1) : d3.bisectRight(breaks, v) - 1);
-  const apply = (v) => colors[classOf(v)] ?? theme.muted;
-  return { kind: "binned", channel, column, type, breaks, labels: opts.labels, colors, classOf, apply };
+  const apply = (v) => colors[classOf(v)] ?? na;
+  return { kind: "binned", channel, column, type, breaks, labels: opts.labels, colors, classOf, apply, na };
 }
 
 // Limits with null bounds: a null bound takes the data bound.

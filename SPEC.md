@@ -39,11 +39,11 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 | `layers[].mapping` | Layer channels → column names |
 | `layers[].set` | Constants: channel values and options |
 | `facet` | `{wrap, free, ncol}`, `{rows, cols, free}` or `null` |
-| `scales` | `x`, `y`: `type`, `limits`, `format`, `breaks`, `labels`. `color`, `fill`: `values`, `palette`, `scheme`, `limits`, `mid`, `clamp`, `breaks`, `labels`. |
+| `scales` | `x`, `y`: `type`, `limits`, `format`, `breaks`, `labels`. `color`, `fill`: `values`, `palette`, `scheme`, `limits`, `mid`, `clamp`, `breaks`, `labels`, `na`. |
 | `labels` | `title`, `subtitle`, `caption`, `x`, `y`, `color`, `fill`. `null` removes a title. A missing key uses the first mapped column name. |
 | `info` | Optional. `entries`: `[key, value]` pairs in order; a value is a string, a number, a boolean or `null`. `position`: `right` or `bottom`; without it, `right`, or the place with the most room in a fixed size. |
 | `coord` | Optional. `{type: "geo", scalebar?, north?}`: map coordinates, with the corners of the scale bar and the north arrow (§5) |
-| `insets` | Optional. `[{x: [low, high], y: [low, high], at: [left, bottom, right, top]}]`: inset panels (§6) |
+| `insets` | Optional. `[{x: [low, high], y: [low, high], at: [left, bottom, right, top], title?}]`: inset panels (§6). `bottom` or `top` can be `null`. |
 | `theme` | `style`, `format`, and the overrides `width`, `height`, `size`, `legend` |
 
 ### Column types
@@ -56,7 +56,7 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 | `geometry` | GeoJSON geometries (`{type, coordinates}`) | values with `__geo_interface__` (a GeoDataFrame geometry column, shapely) or GeoJSON dicts | GeoJSON geometry objects |
 
 - Times are wall-clock times. The axis shows the clock time of the data, in every output and every time zone.
-- A float that is not an integer keeps 6 significant digits.
+- A float that is not an integer keeps 6 significant digits. The x and y columns of a `raster`, and every position column (x, y, xend, …) of a plot in map coordinates, keep 5 decimals instead (about 1 m in degrees): 6 significant digits are 0.001° at 140°E, 8% of a 1 km mesh cell.
 - The builders send only the columns that a mapping or a facet uses.
 - Geometry coordinates keep 5 decimals (about 1 m in degrees).
 - `plot()` and the `data` of a layer also take a GeoJSON FeatureCollection: one row per feature, with its properties as columns and its geometry in the column `geometry`.
@@ -92,7 +92,7 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 | `abline` | color | slope, intercept, size, alpha, dash | – | `line` across the x domain |
 | `segment` | x, y, xend, yend, color | size, alpha, dash, position | dodge | `link` |
 | `rect` | xmin, xmax, ymin, ymax, color, tooltip | alpha | – | `rect` |
-| `band` | xmin, xmax, ymin, ymax, color | alpha | – | `rect`. A missing bound is the panel edge. |
+| `band` | xmin, xmax, ymin, ymax, color | alpha | – | `rect`. Without bounds on an axis, the band spans the panel on that axis (also a category axis); one missing bound is the edge of the view. |
 | `tile` | x, y, color, tooltip | alpha | – | `cell` (two categories), `barX`/`barY` (one category), `rect` (two numbers) |
 | `text` | x, y, label, color | size, alpha, repel | – | `text`; with `repel`, leader lines (`path`) |
 | `errorbar` | x, ymin, ymax, color | size, alpha, position | dodge | `ruleX` and two caps |
@@ -123,8 +123,11 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 - A statistic runs on the rows of each panel, after the legend filter. Bin edges do not depend on the panel.
 - Dodge of `point`, `segment` and `errorbar`: the band of each category has one slot per color of the plot, in the legend order, so a color has the same place in every category, panel and layer, and the segments of a color meet its points. A color that the legend hides leaves its slot empty. The slots are along the category axis: x, else y (`errorbar` draws vertical bars, so it needs a category x). Dodge needs a category axis and a color mapped to a string column; a constant color takes the center. The caps of an error bar are 30% of the band, or 60% of a slot.
 - `polygon` draws the GeoJSON `Polygon` and `MultiPolygon` geometries of a geometry column, with x as the first coordinate (longitude) and y as the second (latitude). Holes stay empty (even-odd rule). Without `geometry`, it takes the column named `geometry`. `fill` fills the areas (a column, through the fill scale, or a color); `color` is the outline. Without `fill`, it draws outlines in `muted`, 0.6 px; with `fill`, thin outlines (0.5 px) in the `background` color separate the areas. `size` is the outline width; `alpha` the opacity of the fill (or of the outline without fill). The bounding boxes of the geometries train the axis domains. A geometry column goes to `geometry` only.
-- `raster` draws a regular grid of cells (one row per cell center, for example a 1 km mesh of seismic intensity) as one image of one pixel per cell, colored by the fill scale, without smoothing, under the layers after it. The grid step in x and y is the mean of the gaps between neighbouring distinct values over the number of steps that each gap spans (refined three times), so values with 6 significant digits keep their columns; a missing cell, or a `null` fill, is transparent. A value more than a quarter of a step off the grid is an error. The cell edges train the axis domains. x and y must be number or time axes. The PNG is made once per figure and a zoom moves it; Node and the browser write the same bytes.
-- `text(repel=true)` places each label, in row order (put the important ones first), at the first free place around its anchor: right, upper right, lower right, left, upper left, lower left, above, below (0.4 em beside, 0.2 em above or below, beyond a point drawn there), then on rings 0.5 em apart, up to 10 em. A place is free when the label is inside the panel and clear of the labels placed before, of the anchors, of the points of the `point` layers of the panel, of the insets and of the scale bar and north arrow. When no place is free, the label goes to the right of its anchor anyway. A label further than 1.5 em from its anchor gets a thin leader line in `muted`. The placement uses the font metrics (the same in Node and the browser) and runs again at each zoom.
+- `raster` draws a regular grid of cells (one row per cell center, for example a 1 km mesh of seismic intensity) as an image of one pixel per cell, colored by the fill scale, without smoothing, under the layers after it. A missing cell, or a `null` fill, is transparent. The cell edges train the axis domains. x and y must be number or time axes.
+  - The grid in x and in y is a least-squares fit of value = origin + index × step over the distinct values. The index of each value counts the steps from its neighbour, with the local step (the mean of the gaps of about one step), so a grid with gaps or a far cell (an island) keeps every cell in its column. A value more than a quarter of a step off the grid is an error.
+  - Each panel and inset draws only the cells in view, in a window that snaps to blocks of about 64 px, so a small pan or zoom reuses the image. The image is a PNG with a palette (256 colors or fewer) or RGBA, compressed (deflate), defined once in the `defs` of the figure and drawn with `use`; the images of an older view leave the `defs`. Node and the browser write the same bytes.
+- `text(repel=true)` places each label, in row order (put the important ones first), at the first free place around its anchor: right, upper right, lower right, left, upper left, lower left, above, below (0.4 em beside, 0.2 em above or below, beyond a point drawn there), then on rings 0.5 em apart, up to 10 em. A place is free when the label is inside the panel and clear of the labels placed before, of the anchors, of the points of the `point` layers of the panel, of the insets and of the scale bar and north arrow. When no place is free, the label goes to the right of its anchor anyway. A label further than 1.5 em from its anchor gets a thin leader line in `muted`. A label whose point is out of view (zoomed out, or outside an inset) is not drawn. The placement uses the font metrics (the same in Node and the browser) and runs again at each zoom.
+  - `repel="areas"` also keeps labels off the areas of the panel when it can: the fill of polygons, the outlines of polygons without fill, and raster cells. The areas are drawn on a grid of 3 px; a label takes the first free place that covers none of them, else the free place that covers the least.
 - Direct labels (`line(direct=true)`): each series (the `group` value, else the `color` value) gets its name right of its last point in view, in its color, darkened (or lightened on a dark background) to a contrast of 3:1 at least. A long name wraps to 2 lines, at most 160 px or 20% of the figure width. Labels that would overlap move apart vertically, and stay in the panel when there is room. Each panel gets a right margin for the longest name; the legend stays unless `theme(legend="none")`.
 
 ## 5. Scales
@@ -135,6 +138,7 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 - The axis domain trains on the layer views, which include the statistics. For example, it includes the 0 of a bar and the top of a stack.
 - The first view is `limits` when it is set. A `null` bound keeps the data bound on that side, with its 5% space. Without limits, the first view is the data range plus 5% on each side.
 - A category axis shows the categories in the `limits` order, then in the `levels` order, then in natural sort order. A label that is too wide for its band wraps at its spaces, to 3 lines at most. If a word is still too wide, all labels rotate by 40°; a rotated label gets 60% of the panel height (at least 10 em) and ends with an ellipsis beyond it, and the left margin grows so that the first one is not cut off.
+- The layout keeps room right of the last column for the half of its last x tick label beyond the panel edge (for example the tick at the right limit of a map).
 - Continuous axes have major ticks and minor grid lines at the midpoints. A log axis has ticks at the powers of ten, with minor lines at 2–9 times each power; with fewer than three powers of ten in view, it has ticks at 1, 2 and 5 times each power.
 - `breaks` (a list of numbers or times) sets the major ticks of a number, log or time axis, with no minor grid lines; a zoom keeps them, and a break outside the view does not show. `labels` (strings, one per break) are the tick labels; without them, the label is `format`, or `~g` (log), `,~r` (linear) or the time pattern. Breaks on a category axis are an error.
 - Time labels are on one line. The pattern follows the tick step: `%Y-%m`, `%m-%d`, `%m-%d %H:%M` (more than one day in view), `%H:%M` or `%H:%M:%S`. `format`, a d3-format or d3-time-format string, replaces it.
@@ -149,12 +153,13 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 
 There are two color scales: `color` (`color()`, the `color` channel) and `fill` (`fill()`, the `fill` channel of `polygon` and `raster`). They have the same options, each its own legend, and they can map different columns: for example the outage of each area (`fill`) and the class of each town (`color`).
 
-- `breaks` (numbers or times that increase) make a binned scale. The classes are `[b0, b1)`, …, `[b(n-1), bn)` and `[bn, ∞)`: one class per break, closed on the left. They depend on the breaks only, so two plots with the same breaks have the same colors. A value below `b0` is `muted` (with `clamp: true`, the first class) and has no legend entry; `null` is `muted`. `labels` (one per break) names the classes. `mid` and a map of `values` do not apply. Breaks on a string column are an error.
+- `breaks` (numbers or times that increase) make a binned scale. The classes are `[b0, b1)`, …, `[b(n-1), bn)` and `[bn, ∞)`: one class per break, closed on the left. They depend on the breaks only, so two plots with the same breaks have the same colors. A value below `b0` takes the `na` color (with `clamp: true`, the first class) and has no legend entry; so does `null`. `labels` (one per break) names the classes. `mid` and a map of `values` do not apply. Breaks on a string column are an error.
 - The steps legend has one box per class, low to high: left to right at the bottom, bottom to top on the right. The break values (format `,~r`, or the time pattern) are at the lower edge of each box; class names (`labels`) are on the boxes.
 - `limits` sets the categories (and their order) or the range of the color scale. A `null` bound keeps the data bound.
 - `mid` makes a diverging scale: `mid` takes the center color of the scheme, and each side stretches to its limit.
-- A list of colors and a plotto scheme interpolate in Lab space. A d3 scheme name (such as `viridis` or `blues`) uses the d3 interpolator.
-- A continuous value outside the domain is `muted`. `clamp: true` gives it the end color.
+- A list of colors and a plotto scheme interpolate in Lab space. A d3 scheme name (such as `viridis`, `YlOrRd`, in any case: `ylorrd` works too) uses the d3 interpolator. An unknown scheme is an error at the call, which lists the plotto and d3 schemes. The errors of a scale name it: `color()` or `fill()`.
+- A continuous value outside the domain is `na`. `clamp: true` gives it the end color.
+- `na` is the color of a missing value (`null`), of a value outside the scale (outside the limits, below the first break, a category outside the limits): a theme color or a CSS color. Without it, `muted`, which is near-black in the `paper` style. A missing raster cell stays transparent.
 - All the color mappings of one scale must use the same column.
 - A plot with mappings on both scales stacks the two legends (color first), at the right or at the bottom. The fill legend does not toggle values.
 - A long legend wraps into columns.
@@ -174,7 +179,10 @@ There are two color scales: `color` (`color()`, the `color` channel) and `fill` 
 
 ### Insets
 
-`inset(x=[low, high], y=[low, high], at=[left, bottom, right, top])` draws the extent x × y in a box of each panel; `at` is in shares of the panel, from its bottom left. For example the Okinawa islands, the Izu and Ogasawara islands, or eastern Hokkaido on a map of Japan, so that no point is left out of the main extent. Each call adds one inset.
+`inset(x=[low, high], y=[low, high], at=[left, bottom, right, top], title=)` draws the extent x × y in a box of each panel; `at` is in shares of the panel, from its bottom left. For example the Okinawa islands, the Izu and Ogasawara islands, or eastern Hokkaido on a map of Japan, so that no point is left out of the main extent. Each call adds one inset.
+
+- In map coordinates, `bottom` or `top` can be `null`: the box then takes the shape of the extent at the same distance per px, from the other edge, so the extent fills it exactly.
+- `title` is drawn inside the frame, at the top left, in bold, over a halo of the background color; a long title ends with an ellipsis.
 
 - An inset draws the layers of its panel (with the rows of that panel), on the `background` color, with a frame in `tick` and without axes and grid lines. It covers the panel under it.
 - In map coordinates, the extent grows on one side to fill the box at the same distance per px in x and y.
@@ -312,7 +320,7 @@ Hover:
 | Output | Function | Notes |
 |---|---|---|
 | Static SVG | `toSVG(spec)` (JS), `p.save("f.svg")` (Python) | At the size of the theme |
-| PNG | `p.save("f.png", scale=2, width=, height=)` | resvg draws the Node SVG. `width` and `height` lay out again at that size. |
+| PNG | `p.save("f.png", scale=2, width=, height=)` | resvg draws the Node SVG. `width` and `height` lay out again at that size. Each clipped group gets an invisible rect of its clip box first: resvg 2.6 stops on a clipped group whose content is all outside the clip (for example the points of the main map in an inset). |
 | Notebook | `p`, `p.interactive()` | `text/html`: the static SVG, the spec and the browser bundle, which calls `draw()`. The bundle loads d3 and Observable Plot from `cdn.jsdelivr.net`. Without the script, the static SVG stays. |
 | marimo | `p`, `p.interactive()` | `_display_()` (Jupyter ignores it). With anywidget: a widget with the traits `spec` and `interactive`, whose module (`widget.js`) calls `draw()`. It loads d3 and Observable Plot from `cdn.jsdelivr.net`. No Node call and no static SVG. Without anywidget: the notebook HTML through `mo.Html`, of which marimo shows the static SVG. |
 | Browser | `draw(spec, el, options)` | Returns `{ state, redraw(), resize(width), destroy() }` |
@@ -324,7 +332,7 @@ The Node SVG and the browser SVG are the same, except for the numbers of the cli
 
 - Themes are styles and formats with four overrides. There is no `element_*` theming.
 - There are two color scales per plot: `color` and `fill`. Size and shape are constants, not mappings.
-- A raster has one row per cell in the spec (about 30 bytes per cell) and an image of 4 bytes per cell, without compression: crop the grid to the map (90 000 cells make a spec of about 3 MB).
+- A raster has one row per cell in the spec (about 30 bytes per cell): crop the grid to the map (90 000 cells make a spec of about 3 MB). The images in the SVG are compressed and hold the cells in view only.
 - A geometry column is JSON in the spec and in the notebook HTML: simplify the geometries first (for example `GeoSeries.simplify` or mapshaper). Each zoom and pan draws every area again.
 - There is no plot composition.
 - More than about 20 000 points make a large SVG: the SVG of 20 000 points is about 1.7 MB.

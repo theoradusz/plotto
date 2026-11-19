@@ -1,6 +1,7 @@
 // Theme: a style (colors, font) and a format (size, text size, line width) from theme.json, plus overrides.
 // Every style is merged over "pastel" (the default style), so a style lists only what it changes.
 import * as d3 from "d3";
+import GRAMMAR from "../grammar.json" with { type: "json" };
 import THEMES from "../theme.json" with { type: "json" };
 
 export const STYLES = Object.keys(THEMES.styles);
@@ -33,21 +34,27 @@ export function resolveTheme({ style = "pastel", format = "screen", legend, ...o
   return theme;
 }
 
-// The colors of a named palette (or of a list of colors), resolved against the theme tokens.
-export function palette(theme, name) {
+// The colors of a named palette (or of a list of colors), resolved against the theme tokens. where: the scale, for
+// the error message ("color()" or "fill()").
+export function palette(theme, name, where = "color()") {
   const list = Array.isArray(name) ? name : THEMES.palettes[name];
-  if (!list) throw new Error(`color(): unknown palette "${name}". Valid: ${PALETTES.join(", ")}`);
+  if (!list) throw new Error(`${where}: unknown palette "${name}". Valid: ${PALETTES.join(", ")}`);
   return list.map((c) => colorOf(theme, c) ?? c);
 }
 
-// An interpolator t ∈ [0, 1] → color: a plotto scheme (theme.json), a d3 scheme name, or a list of colors.
-export function interpolator(theme, scheme) {
+// The d3 name of a scheme, in any case ("ylorrd" → "YlOrRd"), or undefined.
+export function d3Scheme(name) {
+  return typeof name === "string" ? GRAMMAR.d3Schemes.find((n) => n.toLowerCase() === name.toLowerCase()) : undefined;
+}
+
+// An interpolator t ∈ [0, 1] → color: a plotto scheme (theme.json), a d3 scheme name (any case), or a list of colors.
+export function interpolator(theme, scheme, where = "color()") {
   const resolve = (list) => d3.piecewise(d3.interpolateLab, list.map((c) => colorOf(theme, c) ?? c));
   if (Array.isArray(scheme)) return resolve(scheme);
   if (THEMES.schemes[scheme]) return resolve(THEMES.schemes[scheme]);
-  const fn = typeof scheme === "string" && d3[`interpolate${scheme[0].toUpperCase()}${scheme.slice(1)}`];
-  if (!fn) throw new Error(`color(): unknown scheme "${scheme}". plotto schemes: ${SCHEMES.join(", ")}; or a d3 scheme such as viridis, magma, blues`);
-  return fn;
+  const name = d3Scheme(scheme);
+  if (!name) throw new Error(`${where}: unknown scheme "${scheme}". plotto schemes: ${SCHEMES.join(", ")}; d3 schemes (any case): ${GRAMMAR.d3Schemes.join(", ")}`);
+  return d3[`interpolate${name}`];
 }
 
 // A color is a theme token ("blue", "muted", ...) or any CSS color. Returns undefined for anything else.

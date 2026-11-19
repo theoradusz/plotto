@@ -10,6 +10,7 @@ import { directModel, LINE, place, TICK } from "./layout.js";
 import { AXIS_CHANNELS, axisKind, colorScale, equalize, geoAspect, ticks, trainDomain } from "./scales.js";
 import { normalize } from "./spec.js";
 import { svgElement, svgText } from "./svg.js";
+import { fitText } from "./text.js";
 import { fontSizes } from "./theme.js";
 import { layerEdges, makeView } from "./views.js";
 
@@ -123,7 +124,10 @@ export function drawPanels(state) {
   }
   state.panelLayer.replaceChildren();
   const panels = [...grid.panels, ...state.insets.map((s) => grid.panels[s.parent])];
+  state.used = new Set();
   state.panels = panels.map((p, i) => drawPanel(state, p, i));
+  // The definitions that no panel uses now (raster images of an older view) go, so a saved SVG holds only its own.
+  for (const def of [...(state.defs?.children ?? [])]) if (!state.used.has(def.getAttribute("id"))) def.remove();
   if (state.legendG) state.legendG.replaceWith((state.legendG = placedLegend(state)));
 }
 
@@ -150,7 +154,13 @@ function drawPanel(state, p, i) {
   ].map(({ x, y, w, h }) => ({ x0: x, y0: y, x1: x + w, y1: y + h }));
   const layers = ns.layers.map((layer, li) => {
     const view = p.views[li];
-    const c = context({ view, layer, kind, color, fill, theme, fonts, domain, bandwidth, direct: box.inset ? null : state.direct, obstacles: () => obstacles(ns, p, theme), blocked });
+    // Shared definitions (raster images), before the panels and kept across redraws: each is added once, by id.
+    const define = (id, make) => {
+      state.defs ??= state.svg.insertBefore(svgElement(doc, "defs", { class: "pt-defs" }), state.panelLayer);
+      if (!state.defs.querySelector(`[id="${id}"]`)) state.defs.append(make(doc));
+      state.used.add(id);
+    };
+    const c = context({ view, layer, kind, color, fill, theme, fonts, domain, bandwidth, direct: box.inset ? null : state.direct, obstacles: () => obstacles(ns, p, theme), areas: () => areas(ns, p), blocked, define });
     return { layer, view, c, marks: view.n ? LAYERS[layer.type](c) : [] };
   });
   const axis = (k) => {
@@ -192,6 +202,7 @@ function drawPanel(state, p, i) {
   const g = svgElement(doc, "g", { class: "pt-panel", "data-panel": i, transform: `translate(${box.x},${box.y})`, fill: "currentColor", "text-anchor": "middle" });
   for (const child of [...plot.childNodes]) if (child.nodeName.toLowerCase() !== "style") g.append(child);
   if (state.geo && !box.inset) g.append(mapKeys(state, keys));
+  if (box.inset && box.title) g.append(insetTitle(state, box));
   state.panelLayer.append(g);
   return { g, plot, box, layers };
 }
@@ -201,14 +212,41 @@ function drawPanel(state, p, i) {
 function insetPanels(ns, kind, boxes) {
   if (!ns.insets.length) return [];
   if (kind.x === "category" || kind.y === "category") throw new Error("inset(): x and y must be number or time axes, not category axes");
+  const geo = ns.coord?.type === "geo";
   return boxes.flatMap((b, parent) =>
-    ns.insets.map(({ x, y, at: [l, bottom, r, top] }) => {
+    ns.insets.map(({ x, y, at: [l, bottom, r, top], title }) => {
+      // A null bottom or top: the box takes the shape of the extent at equal distance per px (map coordinates).
+      if (bottom === null || top === null) {
+        if (!geo) throw new Error('inset(): a null bottom or top needs map coordinates, coord("geo")');
+        const h = ((r - l) * b.innerW * geoAspect({ x, y })) / b.innerH;
+        [bottom, top] = bottom === null ? [Math.max(0, top - h), top] : [bottom, Math.min(1, bottom + h)];
+      }
       const [w, h] = [(r - l) * b.innerW, (top - bottom) * b.innerH];
       const box = { x: b.x + b.ml + l * b.innerW, y: b.y + (1 - top) * b.innerH, w, h, ml: 0, mr: 0, mb: 0, innerW: w, innerH: h };
-      Object.assign(box, { count: { x: 2, y: 2 }, showX: false, showY: false, rotateX: false, wrapX: new Map(), inset: true });
+      Object.assign(box, { count: { x: 2, y: 2 }, showX: false, showY: false, rotateX: false, wrapX: new Map(), inset: true, title });
       return { parent, box, domain: { x, y } };
     }),
   );
+}
+
+// The title of an inset, at the top left inside its frame, over a halo of the background color.
+function insetTitle(state, box) {
+  const { doc, theme, fonts } = state;
+  const halo = { stroke: theme.background, "stroke-width": 3, "stroke-linejoin": "round", "paint-order": "stroke" };
+  const text = fitText(box.title, fonts.tick, box.innerW - 8, true, theme.metrics);
+  return svgText(doc, text, { class: "pt-inset-title", x: 4, y: fonts.tick + 2, "font-size": fonts.tick, "font-weight": "bold", fill: theme.ink, "text-anchor": "start", ...halo });
+}
+
+// The areas of a panel that text(repel="areas") keeps clear of when it can: the polygons (their fill, or their
+// outlines without fill) and the cells of the rasters, in data units.
+function areas(ns, p) {
+  return ns.layers.flatMap((layer, li) => {
+    const view = p.views[li];
+    if (!view.n) return [];
+    if (layer.type === "polygon") return [{ polygons: view.cols.geometry, filled: !!layer.channels.fill }];
+    if (layer.type === "raster") return [{ grid: view.grid, values: view.cols.fill }];
+    return [];
+  });
 }
 
 // The points of the point layers of a panel, which text(repel=true) keeps clear of: data arrays and radii.
@@ -266,7 +304,7 @@ function mapKeys(state, keys) {
 }
 
 // Channel accessors of one layer view in one panel, for layers.js. Time values become Date objects.
-function context({ view, layer, kind, color, fill, theme, fonts, domain, bandwidth, direct, obstacles, blocked }) {
+function context({ view, layer, kind, color, fill, theme, fonts, domain, bandwidth, direct, obstacles, areas, blocked, define }) {
   const axisOf = (ch) => (AXIS_CHANNELS.x.includes(ch) ? "x" : AXIS_CHANNELS.y.includes(ch) ? "y" : null);
   const cache = {};
   const v = (ch) => {
@@ -294,7 +332,9 @@ function context({ view, layer, kind, color, fill, theme, fonts, domain, bandwid
     bandwidth,
     direct,
     obstacles,
+    areas,
     blocked,
+    define,
   };
 }
 

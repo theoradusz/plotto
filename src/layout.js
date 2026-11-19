@@ -82,7 +82,7 @@ export function place({ ns, grid, kind, home, legend, info, direct, fonts, W, H 
   // Two passes: the tick count depends on the panel size, and the margins depend on the tick labels.
   let innerW = area.w / grid.ncol;
   let innerH = area.h / grid.nrow;
-  let ml, mb, mt, count, rotateX, wrapX;
+  let ml, mb, mt, count, rotateX, wrapX, xr;
   for (let pass = 0; pass < 2; pass++) {
     // Time and degree labels are wider: fewer x ticks. At least 3 y ticks, so that a short panel keeps a readable scale.
     count = { x: Math.max(2, innerW / (kind.x === "time" || ns.scales.x?.degrees ? 110 : 75)), y: Math.max(3, innerH / 45) };
@@ -143,7 +143,17 @@ export function place({ ns, grid, kind, home, legend, info, direct, fonts, W, H 
     grid.panels.forEach((p, i) => {
       if (showX(p, i)) mb[p.row] = Math.max(mb[p.row], Math.ceil(xLabelH + TICK.size + TICK.padding + 3));
     });
-    innerW = (area.w - d3.sum(ml) - mr * grid.ncol - gap * (grid.ncol - 1) - rightStrip) / grid.ncol;
+    // The last x tick label of the last column can reach past the right edge of the panels (a map with limits has a
+    // tick at the edge): keep room for the half of it beyond the edge, unless the right margin or strip gives it.
+    xr = 0;
+    grid.panels.forEach((p, i) => {
+      if (kind.x === "category" || !showX(p, i) || p.col !== grid.ncol - 1) return;
+      const [lo, hi] = home[i].x.map(Number);
+      const t = ticks(kind.x, home[i].x, count.x, ns.scales.x);
+      const sx = (kind.x === "log" ? d3.scaleLog() : d3.scaleLinear()).domain([lo, hi]).range([0, innerW]);
+      for (const v of t.major) if (+v >= lo && +v <= hi) xr = Math.max(xr, Math.ceil(sx(+v) + tw(t.format(v), fonts.tick) / 2 - innerW));
+    });
+    innerW = (area.w - d3.sum(ml) - mr * grid.ncol - gap * (grid.ncol - 1) - rightStrip - Math.max(0, xr - mr - rightStrip)) / grid.ncol;
     innerH = (area.h - mt - d3.sum(mb) - grid.nrow * wrapStrip - topStrip - gap * (grid.nrow - 1)) / grid.nrow;
   }
   innerW = Math.max(20, innerW);
@@ -218,7 +228,7 @@ export function place({ ns, grid, kind, home, legend, info, direct, fonts, W, H 
     });
   }
   // The right column is at the right edge, or next to the panels when the aspect makes them narrower.
-  const beside = innerRight + mr + rightStrip + s * 1.5;
+  const beside = innerRight + Math.max(mr + rightStrip, xr) + s * 1.5;
   const rightX = beside < W - pad - rightW - 1 ? beside : W - pad - rightW;
   const infoAt = !info
     ? null

@@ -78,7 +78,11 @@ def test_only_used_columns_go_into_the_spec():
         (lambda p: p.coord("geo", grid=True), 'unknown option "grid"'),
         (lambda p: p.inset(x=[1, 0], y=[0, 1], at=[0, 0, 0.5, 0.5]), "x must be \\[low, high\\]"),
         (lambda p: p.inset(x=[0, 1], y=[0, 1], at=[0, 0, 1.5, 0.5]), "at must be \\[left, bottom, right, top\\]"),
-        (lambda p: p.text(label="g", repel="yes"), "repel must be True or False"),
+        (lambda p: p.text(label="g", repel="yes"), 'unknown repel "yes". Valid: true, false, areas'),
+        (lambda p: p.text(label="g", repel=1), 'unknown repel "1"'),
+        (lambda p: p.inset(x=[0, 1], y=[0, 1], at=[0, None, 0.5, None]), "bottom or top can be None"),
+        (lambda p: p.inset(x=[0, 1], y=[0, 1], at=[0, 0, 0.5, 0.5], title=3), "title must be a string"),
+        (lambda p: p.fill(scheme="nope"), 'fill\\(\\): unknown scheme "nope"'),
     ],
 )
 def test_errors_name_the_problem_and_the_valid_names(build, message):
@@ -160,3 +164,16 @@ def test_a_feature_collection_is_one_row_per_feature():
     }
     spec = plot(fc).polygon(tooltip="name").spec()
     assert spec["data"][0]["columns"]["name"] == {"type": "string", "values": ["A"]}
+
+
+def test_positions_of_a_raster_and_of_a_map_keep_5_decimals():
+    cell = pd.DataFrame({"lon": [153.98125], "lat": [24.2875], "v": [0.123456789]})
+    raster = plot(cell, x="lon", y="lat").raster(fill="v").spec()["data"][0]["columns"]
+    assert raster["lon"]["values"] == [153.98125]
+    assert raster["v"]["values"] == [0.123457]
+    assert plot(cell, x="lon", y="lat").point().coord("geo").spec()["data"][0]["columns"]["lon"]["values"] == [153.98125]
+    assert plot(cell, x="lon", y="lat").point().spec()["data"][0]["columns"]["lon"]["values"] == [153.981]
+
+
+def test_d3_schemes_take_any_case():
+    assert plot(pd.DataFrame(FIXTURE["rows"]), x="t", y="v").fill(scheme="ylorrd").spec()["scales"]["fill"] == {"scheme": "ylorrd"}

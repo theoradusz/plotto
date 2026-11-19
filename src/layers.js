@@ -5,7 +5,7 @@ import * as Plot from "@observablehq/plot";
 import * as d3 from "d3";
 import { DIRECT } from "./layout.js";
 import { pngDataURI } from "./png.js";
-import { placeLabels } from "./repel.js";
+import { areaCost, placeLabels } from "./repel.js";
 import { boxStats } from "./stats.js";
 import { textWidth } from "./text.js";
 import { readable } from "./theme.js";
@@ -97,11 +97,16 @@ export const LAYERS = {
 
   rect: (c) => [Plot.rect(c.index, { x1: c.v("xmin"), x2: c.v("xmax"), y1: c.v("ymin"), y2: c.v("ymax"), ...fillStyle(c, first(c)), clip })],
 
-  // A band without a bound spans the full panel on that side.
+  // A band without bounds on an axis spans the full panel on that axis (Plot's rect without those channels), also on
+  // a category axis. With one bound, the other is the edge of the view (on a category axis: the first or last category).
   band: (c) => {
-    const edge = (ch, axis, i) => c.v(ch) ?? c.index.map(() => c.domain[axis][i]);
-    const box = { x1: edge("xmin", "x", 0), x2: edge("xmax", "x", 1), y1: edge("ymin", "y", 0), y2: edge("ymax", "y", 1) };
-    return [Plot.rect(c.index, { ...box, ...fillStyle(c, c.theme.muted, 0.12), clip })];
+    const bounds = (lo, hi, axis) => {
+      const [a, b] = [c.v(lo), c.v(hi)];
+      if (!a && !b) return {};
+      const edge = (last) => c.index.map(() => (last ? c.domain[axis].at(-1) : c.domain[axis][0]));
+      return { [`${axis}1`]: a ?? edge(false), [`${axis}2`]: b ?? edge(true) };
+    };
+    return [Plot.rect(c.index, { ...bounds("xmin", "xmax", "x"), ...bounds("ymin", "ymax", "y"), ...fillStyle(c, c.theme.muted, 0.12), clip })];
   },
 
   tile: (c) => {
@@ -153,24 +158,43 @@ export const LAYERS = {
       throw new Error("raster(): x and y must be number or time axes, not log or category axes");
     }
     const { x, y } = c.grid;
-    const uri = (c.cache.png ??= rasterPNG(c));
     return [
       (index, scales, values, dimensions, context) => {
         const doc = context.document;
-        const el = (name, attrs) => {
-          const e = doc.createElementNS("http://www.w3.org/2000/svg", name);
-          for (const [k, v] of Object.entries(attrs)) if (v !== undefined) e.setAttribute(k, v);
-          return e;
-        };
         const { marginLeft: ml, marginTop: mt, marginRight: mr, marginBottom: mb, width, height } = dimensions;
-        const [x0, x1] = [scales.x(x.edges[0]), scales.x(x.edges[1])];
-        const [y0, y1] = [scales.y(y.edges[1]), scales.y(y.edges[0])];
-        const frame = el("svg", { "aria-label": "raster", x: ml, y: mt, width: width - ml - mr, height: height - mt - mb, overflow: "hidden" });
-        const image = { href: uri, x: x0 - ml, y: y0 - mt, width: x1 - x0, height: y1 - y0, preserveAspectRatio: "none" };
-        // No smoothing: resvg knows optimizeSpeed (the last declaration wins there); browsers take pixelated, or
-        // optimizeSpeed as its legacy alias.
-        const style = { "image-rendering": "optimizeSpeed", style: "image-rendering:pixelated;image-rendering:optimizeSpeed", opacity: c.options.alpha };
-        frame.append(el("image", { ...image, ...style }));
+        const frame = svgNode(doc, "svg", { "aria-label": "raster", x: ml, y: mt, width: width - ml - mr, height: height - mt - mb, overflow: "hidden" });
+        // Only the cells in view, in a window that snaps to blocks of about 64 px: a zoomed inset does not scale the
+        // whole grid up (which resvg cannot draw), and a small pan reuses the image. Each image is made once per
+        // view and window, and defined once per figure (in its defs, by a hash of its content).
+        const cellPx = [Math.abs(scales.x(x.lo + x.step) - scales.x(x.lo)), Math.abs(scales.y(y.lo + y.step) - scales.y(y.lo))];
+        const window = (a, [lo, hi], px) => {
+          const q = 2 ** Math.max(0, Math.min(6, Math.floor(Math.log2(64 / Math.max(px, 1e-9)))));
+          const [i0, i1] = [Math.floor((Math.min(+lo, +hi) - a.lo) / a.step + 0.5) - 1, Math.ceil((Math.max(+lo, +hi) - a.lo) / a.step - 0.5) + 1];
+          return [Math.max(0, Math.floor(i0 / q) * q), Math.min(a.n - 1, Math.ceil((i1 + 1) / q) * q - 1)];
+        };
+        const [i0, i1] = window(x, c.domain.x, cellPx[0]);
+        const [j0, j1] = window(y, c.domain.y, cellPx[1]);
+        if (i1 < i0 || j1 < j0) return frame;
+        c.cache.windows ??= new Map();
+        const key = `${i0},${i1},${j0},${j1}`;
+        if (!c.cache.windows.has(key)) {
+          const uri = rasterPNG(c, [i0, i1], [j0, j1]);
+          c.cache.windows.set(key, { uri, id: `pt-raster-${hash(uri)}` });
+        }
+        const { uri, id } = c.cache.windows.get(key);
+        const [w, h] = [i1 - i0 + 1, j1 - j0 + 1];
+        c.define(id, (d) => {
+          const image = svgNode(d, "image", { id, href: uri, width: w, height: h, preserveAspectRatio: "none" });
+          // No smoothing: resvg knows optimizeSpeed (the last declaration wins there); browsers take pixelated, or
+          // optimizeSpeed as its legacy alias.
+          image.setAttribute("image-rendering", "optimizeSpeed");
+          image.setAttribute("style", "image-rendering:pixelated;image-rendering:optimizeSpeed");
+          return image;
+        });
+        const [left, right] = [scales.x(x.lo + (i0 - 0.5) * x.step), scales.x(x.lo + (i1 + 0.5) * x.step)];
+        const [top, bottom] = [scales.y(y.lo + (j1 + 0.5) * y.step), scales.y(y.lo + (j0 - 0.5) * y.step)];
+        const place = `translate(${left - ml},${top - mt}) scale(${(right - left) / w},${(bottom - top) / h})`;
+        frame.append(svgNode(doc, "use", { href: `#${id}`, transform: place, opacity: c.options.alpha }));
         return frame;
       },
     ];
@@ -288,24 +312,55 @@ function dodgeRender(c) {
   };
 }
 
+function svgNode(doc, name, attrs) {
+  const e = doc.createElementNS("http://www.w3.org/2000/svg", name);
+  for (const [k, v] of Object.entries(attrs)) if (v !== undefined) e.setAttribute(k, v);
+  return e;
+}
+
+// A 64-bit FNV-1a hash of a string, as 16 hex digits: the id of a raster image.
+function hash(text) {
+  let [a, b] = [0x811c9dc5, 0x9747b28c];
+  for (let i = 0; i < text.length; i++) {
+    const ch = text.charCodeAt(i);
+    a = Math.imul(a ^ ch, 0x01000193) >>> 0;
+    b = Math.imul(b ^ ch, 0x01000193) >>> 0;
+  }
+  return a.toString(16).padStart(8, "0") + b.toString(16).padStart(8, "0");
+}
+
 // The RGBA pixels of a raster (row 0 at the top, the highest y), from the fill colors; a missing value is
 // transparent.
-function rasterPNG(c) {
+function rasterPNG(c, [i0, i1], [j0, j1]) {
   const { x, y } = c.grid;
-  const [values, colors] = [c.v("fill"), c.fills(null)];
-  const rgba = new Uint8Array(x.n * y.n * 4);
-  const bytes = new Map();
-  for (let k = 0; k < values.length; k++) {
-    const [i, j] = [x.index[k], y.index[k]];
-    if (i < 0 || j < 0 || values[k] === null) continue;
-    const css = Array.isArray(colors) ? colors[k] : colors;
-    if (!bytes.has(css)) {
-      const q = d3.rgb(css);
-      bytes.set(css, [q.r, q.g, q.b, Math.round((Number.isNaN(q.opacity) ? 1 : q.opacity) * 255)]);
+  // The row of each cell (or -1) and the color bytes of each row, once per view.
+  if (!c.cache.cells) {
+    const [values, colors] = [c.v("fill"), c.fills(null)];
+    const cells = new Int32Array(x.n * y.n).fill(-1);
+    const bytes = new Map();
+    const rgba = new Array(values.length);
+    for (let k = 0; k < values.length; k++) {
+      const [i, j] = [x.index[k], y.index[k]];
+      if (i < 0 || j < 0 || values[k] === null) continue;
+      cells[j * x.n + i] = k;
+      const css = Array.isArray(colors) ? colors[k] : colors;
+      if (!bytes.has(css)) {
+        const q = d3.rgb(css);
+        bytes.set(css, [q.r, q.g, q.b, Math.round((Number.isNaN(q.opacity) ? 1 : q.opacity) * 255)]);
+      }
+      rgba[k] = bytes.get(css);
     }
-    rgba.set(bytes.get(css), ((y.n - 1 - j) * x.n + i) * 4);
+    Object.assign(c.cache, { cells, rgba });
   }
-  return pngDataURI(x.n, y.n, rgba);
+  const [w, h] = [i1 - i0 + 1, j1 - j0 + 1];
+  const pixels = new Uint8Array(w * h * 4);
+  for (let j = j0; j <= j1; j++) {
+    for (let i = i0; i <= i1; i++) {
+      const k = c.cache.cells[j * x.n + i];
+      if (k >= 0) pixels.set(c.cache.rgba[k], ((j1 - j) * w + (i - i0)) * 4);
+    }
+  }
+  return pngDataURI(w, h, pixels);
 }
 
 // text(repel=true): each label moves to a free place near its anchor (repel.js), clear of the other labels, of their
@@ -319,11 +374,12 @@ function repelRender(c, size) {
     const obstacles = [...anchors.map((a) => ({ ...a, r: 2 })), ...points.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))];
     const { marginLeft, marginTop, marginRight, marginBottom, width, height } = dimensions;
     const bounds = { x0: marginLeft, y0: marginTop, x1: width - marginRight, y1: height - marginBottom };
-    const spots = placeLabels(anchors, sizes, obstacles, bounds, size, c.blocked ?? []);
+    const cost = c.options.repel === "areas" ? areaCost(areaShapes(c.areas(), scales), bounds) : null;
+    const spots = placeLabels(anchors, sizes, obstacles, bounds, size, c.blocked ?? [], cost);
     const [x, y] = [Float64Array.from(values.x), Float64Array.from(values.y)];
-    Array.from(index).forEach((i, k) => ([x[i], y[i]] = [spots[k].x, spots[k].y]));
-    const g = next(index, scales, { ...values, x, y }, dimensions, context);
-    const leaders = spots.flatMap((s, k) => (s.leader ? [`M${anchors[k].x},${anchors[k].y}L${s.leader.x},${s.leader.y}`] : []));
+    const shown = Array.from(index).filter((i, k) => spots[k] && ([x[i], y[i]] = [spots[k].x, spots[k].y])); // a label of a point out of view is not drawn
+    const g = next(shown, scales, { ...values, x, y }, dimensions, context);
+    const leaders = spots.flatMap((s, k) => (s?.leader ? [`M${anchors[k].x},${anchors[k].y}L${s.leader.x},${s.leader.y}`] : []));
     if (leaders.length) {
       const path = context.document.createElementNS("http://www.w3.org/2000/svg", "path");
       for (const [k, v] of Object.entries({ d: leaders.join(""), fill: "none", stroke: c.theme.muted, "stroke-width": 0.8 })) path.setAttribute(k, v);
@@ -331,6 +387,24 @@ function repelRender(c, size) {
     }
     return g;
   };
+}
+
+// The areas of the panel (figure.js areas()) in px, for areaCost: one shape per polygon (a part of a MultiPolygon)
+// and one rect per raster cell.
+function areaShapes(areas, scales) {
+  const px = ([x, y]) => [scales.x(x), scales.y(y)];
+  return areas.flatMap((a) => {
+    if (a.polygons) {
+      return a.polygons.flatMap((g) => (!g ? [] : (g.type === "Polygon" ? [g.coordinates] : g.coordinates).map((rings) => ({ rings: rings.map((r) => r.map(px)), filled: a.filled }))));
+    }
+    const { x, y } = a.grid;
+    return a.values.flatMap((v, k) => {
+      if (v === null || x.index[k] < 0 || y.index[k] < 0) return [];
+      const [cx, cy] = [x.lo + x.index[k] * x.step, y.lo + y.index[k] * y.step];
+      const [xa, xb, ya, yb] = [scales.x(cx - x.step / 2), scales.x(cx + x.step / 2), scales.y(cy - y.step / 2), scales.y(cy + y.step / 2)];
+      return [{ rect: { x0: Math.min(xa, xb), x1: Math.max(xa, xb), y0: Math.min(ya, yb), y1: Math.max(ya, yb) } }];
+    });
+  });
 }
 
 // Holes of a polygon (inner rings) stay empty, whatever the direction of their rings.
