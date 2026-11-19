@@ -382,6 +382,32 @@ def map_details():
     )
 
 
+def shaking():
+    """A raster under outlines: raster(x=, y=, fill=) draws a regular grid of cells (one row per cell center) as one
+    image, colored by the fill scale; here made-up seismic intensity in the classes of the JMA scale. The outages are
+    points on the color scale, so one figure shows the shaking and the outages, each with its legend."""
+    lon, lat = np.meshgrid(np.arange(139.0125, 140.5, 0.025), np.arange(35 + 1 / 120, 36, 1 / 60))
+    distance = np.hypot((lon - 139.35) * np.cos(np.radians(35.5)), lat - 35.25).ravel()
+    grid = pd.DataFrame({"lon": lon.ravel(), "lat": lat.ravel(), "intensity": 6.9 - 6.5 * distance})
+    towns = load("district_towns").merge(
+        pd.DataFrame([f["properties"] for f in districts()["features"]])[["name", "without_water"]], on="name"
+    )
+    towns["outage"] = pd.cut(
+        towns.without_water, [0, 1000, 10000, np.inf], right=False, labels=["under 1,000", "1,000 to 9,999", "10,000 or more"]
+    )
+    return (
+        plot(grid[grid.intensity >= 3.5], x="lon", y="lat")
+        .raster(fill="intensity", alpha=0.9)
+        .polygon(data=districts(), color="gray", size=0.8)
+        .point(data=towns, x="lon", y="lat", color="outage", size=4)
+        .fill(breaks=[3.5, 4.5, 5.0, 5.5, 6.0, 6.5], labels=["4", "5-", "5+", "6-", "6+", "7"], scheme="yuhi")
+        .color(values=["#BDBDBD", "#6A3D9A", "#1A1238"])
+        .coord("geo", scalebar=True)
+        .labels(title="Shaking and outages", fill="seismic intensity", color="households without water")
+        .theme(legend="bottom")
+    )
+
+
 # --- Styles and output ----------------------------------------------------------------------
 
 
@@ -543,6 +569,7 @@ PAGES = {
         "sections": {
             "Areas and points": [choropleth, map_layers],
             "Insets, scale bar and labels": [map_details],
+            "Rasters": [shaking],
         },
     },
     "scales": {

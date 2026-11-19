@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { test } from "node:test";
+import { Resvg } from "@resvg/resvg-js";
 import { JSDOM } from "jsdom";
 import { plot } from "../src/builder.js";
 import { drawPanels, figure } from "../src/figure.js";
@@ -596,6 +597,45 @@ test("repel places dense labels without overlaps and clear of the points", () =>
   assert.ok(blocked.x + 10 <= 52 || blocked.y + 5 <= 40 || blocked.y - 5 >= 60, "a label keeps clear of a blocked box (an inset, the scale bar)");
   const svg = renderSVG(plot(islands, { x: "lon", y: "lat" }).point().text({ label: "name", repel: true }).spec());
   assert.match(svg, />main 1</);
+});
+
+// --- raster ------------------------------------------------------------------------------------
+
+test("a raster draws one image of its cells, with the fill colors, through resvg", () => {
+  const cells = [];
+  for (let j = 0; j < 2; j++) for (let i = 0; i < 3; i++) if (!(i === 2 && j === 1)) cells.push({ lon: 135 + i * 0.5, lat: 35 + j * 0.5, v: i });
+  const spec = plot(cells, { x: "lon", y: "lat" }).raster({ fill: "v" }).fill({ breaks: [0, 1, 2], values: ["#FF0000", "#00FF00", "#0000FF"] }).spec();
+  const f = figure(spec, { document });
+  assert.equal(f.svg.querySelectorAll('svg[aria-label="raster"] image').length, 1);
+  assert.deepEqual(f.home[0].x, [134.675, 136.325], "the domain covers the cell edges (134.75 to 136.25), with 5% space");
+  const png = new Resvg(f.svg.outerHTML).render();
+  const box = f.layout.panels[0];
+  const pixel = (lon, lat) => {
+    const [x, y] = [Math.round(box.x + f.panels[0].plot.scale("x").apply(lon)), Math.round(box.y + f.panels[0].plot.scale("y").apply(lat))];
+    return [...png.pixels.subarray((y * png.width + x) * 4, (y * png.width + x) * 4 + 3)];
+  };
+  assert.deepEqual(pixel(135, 35), [255, 0, 0]);
+  assert.deepEqual(pixel(135.5, 35.5), [0, 255, 0]);
+  assert.deepEqual(pixel(136, 35), [0, 0, 255]);
+  assert.ok(pixel(136, 35.5).every((v) => v > 200), "a missing cell shows the background (and the grid lines)");
+  const sx = f.panels[0].plot.scale("x");
+  const sy = f.panels[0].plot.scale("y");
+  const hit = pick(f, 0, sx.apply(135.52), sy.apply(35.48));
+  assert.match(hit.header, /^v {2}1$/);
+});
+
+test("a raster finds its grid in values with 6 significant digits, and refuses cells off the grid", () => {
+  const mesh = [];
+  for (let j = 0; j < 3; j++) for (let i = 0; i < 300; i++) mesh.push({ lon: 139.00625 + i * 0.0125, lat: 35.004167 + j / 120, v: (i + j) % 7 });
+  const f = figure(plot(mesh, { x: "lon", y: "lat" }).raster({ fill: "v" }).spec(), { document });
+  const { x, y } = f.grid.panels[0].views[0].grid;
+  assert.equal(x.n, 300);
+  assert.equal(y.n, 3);
+  assert.deepEqual(x.index.slice(0, 300), Array.from({ length: 300 }, (_, i) => i), "each cell in its own column");
+  assert.ok(Math.abs(x.step - 0.0125) < 1e-5, `step ${x.step}`); // the rounding of the first and last values limits it
+  const off = [...mesh.slice(0, 10), { lon: 139.00625 + 3.4 * 0.0125, lat: 35.004167, v: 1 }];
+  assert.throws(() => renderSVG(plot(off, { x: "lon", y: "lat" }).raster({ fill: "v" }).spec()), /raster\(\): x = [\d.]+ is not on a regular grid \(step/);
+  assert.throws(() => renderSVG(plot(mesh.slice(0, 20), { x: "lon", y: "lat" }).raster({ fill: "v" }).x({ type: "log" }).spec()), /x and y must be number or time axes/);
 });
 
 test("a method returns a new builder and keeps the old one", () => {

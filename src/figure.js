@@ -284,6 +284,8 @@ function context({ view, layer, kind, color, fill, theme, fonts, domain, bandwid
     colors: (fallback) => (!colorCh ? fallback : "value" in colorCh ? colorCh.value : v("color").map(color.apply)),
     fills: (fallback) => (!fillCh ? fallback : "value" in fillCh ? fillCh.value : v("fill").map(fill.apply)),
     shift: view.shift,
+    grid: view.grid,
+    cache: view, // a raster keeps its image on its view
     groups: () => v("group") ?? (colorCh?.column ? v("color") : undefined),
     kind,
     theme,

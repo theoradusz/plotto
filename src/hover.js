@@ -13,7 +13,7 @@ const SNAP = 6; // px: series whose nearest x is this close to the snapped x sha
 const KEEP = 4; // px: a new point must be this much nearer to replace the picked one
 const MAX_ROWS = 6; // more series than this at one x: the label shows only the series under the pointer
 const UNIFIED = ["line", "step", "area", "density", "smooth", "ribbon"];
-const SHAPES = ["bar", "hist", "tile", "box", "polygon"];
+const SHAPES = ["bar", "hist", "tile", "box", "polygon", "raster"];
 const POINTS = ["point", "path", "errorbar"];
 
 // (x, y): px inside panel i. previous: the last hit (for hysteresis). Returns a hit or null.
@@ -187,8 +187,8 @@ function shapeUnder(ctx, panel, x, y) {
   const { state, sx, sy } = ctx;
   for (const { layer, view, c } of [...panel.layers].reverse()) { // the top layer first
     if (!SHAPES.includes(layer.type) || layer.type === "box" || !view.n) continue;
-    if (layer.type === "polygon") {
-      const hit = polygonUnder(ctx, layer, view, c, x, y);
+    if (layer.type === "polygon" || layer.type === "raster") {
+      const hit = layer.type === "polygon" ? polygonUnder(ctx, layer, view, c, x, y) : rasterUnder(ctx, layer, view, x, y);
       if (hit) return hit;
       continue;
     }
@@ -236,6 +236,23 @@ function polygonUnder({ state, sx, sy }, layer, view, c, x, y) {
     return { layer, k, color, header, rows, marks: [], anchor: { x, y } };
   }
   return null;
+}
+
+// The raster cell under the pointer: its value as the header, and its x and y (the cell center).
+function rasterUnder({ state, sx, sy }, layer, view, x, y) {
+  const g = view.grid;
+  if (!g || !sx.invert || !sy.invert) return null;
+  const i = Math.round((sx.invert(x) - g.x.lo) / g.x.step);
+  const j = Math.round((sy.invert(y) - g.y.lo) / g.y.step);
+  if (i < 0 || j < 0 || i >= g.x.n || j >= g.y.n) return null;
+  g.cells ??= new Map(g.x.index.map((xi, k) => [g.y.index[k] * g.x.n + xi, k]));
+  const k = g.cells.get(j * g.x.n + i);
+  if (k === undefined || view.cols.fill[k] === null) return null;
+  const [xf, yf, ff] = view.hover.fields;
+  const fillCh = layer.channels.fill;
+  const color = fillCh.column ? state.fill.apply(view.cols.fill[k]) : fillCh.value;
+  const rows = [xf, yf].map((f) => ({ label: f.label, value: fieldText(state, f, k) }));
+  return { layer, k, color, header: `${ff.label}  ${fieldText(state, ff, k)}`, rows, marks: [], anchor: { x, y } };
 }
 
 // Even-odd rule: a point is in a polygon when an odd number of its rings contain it.

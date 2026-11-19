@@ -18,6 +18,7 @@ Write each change under "Unreleased". `scripts/release.sh` moves them to the new
 - `coord("geo", scalebar=True, north=True)` adds a scale bar and a north arrow, in a corner of each map panel.
 - `inset(x=, y=, at=)` draws a distant area (islands) at its own extent in a box of the panel. Zoom and pan leave it as it is.
 - `text(repel=True)` places labels clear of each other, of the points, of the insets and of the scale bar, with leader lines for labels that move far.
+- `raster(x=, y=, fill=)` draws a regular grid of cells (for example the 1 km intensity mesh of an earthquake) as one image, colored by the fill scale, under outlines and points.
 
 ### Changed
 

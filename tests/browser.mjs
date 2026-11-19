@@ -45,7 +45,10 @@ const specs = [
   plot(districts).polygon({ fill: "hh", tooltip: "name" }).point({ data: [{ lon: 135.1, lat: 35.9, k: "town" }], x: "lon", y: "lat", color: "k" }).fill({ breaks: [0, 50, 1000] }).coord("geo").spec(),
   plot(towns, { x: "lon", y: "lat" }).point().text({ label: "name", repel: true }).x({ limits: [135, 136] }).y({ limits: [35, 36] }).inset({ x: [127, 128.5], y: [25.8, 26.8], at: [0.02, 0.6, 0.32, 0.98] }).coord("geo", { scalebar: true, north: true }).spec(),
 ];
-const modes = [true, true, false, true, false, true, true]; // plots 2 and 4 are static
+const cells = [];
+for (let i = 0; i < 4; i++) cells.push({ lon: 135 + i * 0.5, lat: 35, v: i % 2 });
+specs.push(plot(cells, { x: "lon", y: "lat" }).raster({ fill: "v" }).fill({ breaks: [0, 1], values: ["#FF0000", "#0000FF"] }).spec());
+const modes = [true, true, false, true, false, true, true, false]; // plots 2, 4 and 7 are static
 
 const dir = mkdtempSync(join(tmpdir(), "plotto-test-"));
 const js = (await bundle({ cdn: false })).replace(/<\/script/gi, "<\\/script");
@@ -266,6 +269,20 @@ try {
   await sleep(400);
   await drag(6, [p6.x + 10, p6.y + 10], [p6.x + p6.innerW - 10, p6.y + p6.innerH - 10]);
   check("a drag in an inset does not zoom", await b.evaluate("ctl[6].state.domains === ctl[6].state.home"));
+
+  // A raster is drawn without smoothing: a pixel 2 px from the edge between a red and a blue cell is pure red.
+  const sample = await b.evaluate(`(async () => {
+    const st = ctl[7].state, p = st.panels[0], box = st.layout.panels[0];
+    const edge = box.x + p.plot.scale("x").apply(135.25), y = box.y + p.plot.scale("y").apply(35);
+    const img = new Image();
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(st.svg));
+    await img.decode();
+    const canvas = Object.assign(document.createElement("canvas"), { width: st.W, height: st.H });
+    const g = canvas.getContext("2d");
+    g.drawImage(img, 0, 0, st.W, st.H);
+    return JSON.stringify([...g.getImageData(Math.round(edge - 2), Math.round(y), 1, 1).data.slice(0, 3)]);
+  })()`);
+  check("a raster is drawn without smoothing in the browser", sample === "[255,0,0]", sample);
 
   check("no page errors", b.errors.length === 0, b.errors.join("; "));
 } finally {

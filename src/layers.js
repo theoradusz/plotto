@@ -4,6 +4,7 @@
 import * as Plot from "@observablehq/plot";
 import * as d3 from "d3";
 import { DIRECT } from "./layout.js";
+import { pngDataURI } from "./png.js";
 import { placeLabels } from "./repel.js";
 import { boxStats } from "./stats.js";
 import { textWidth } from "./text.js";
@@ -145,6 +146,36 @@ export const LAYERS = {
     return [Plot.geo(c.index, { geometry: c.v("geometry"), ...style, stroke, strokeWidth, strokeLinejoin: "round", render: evenOdd, clip })];
   },
 
+  // A grid of cells as one image, in a nested svg that clips it to the frame. The image has one pixel per cell; it is
+  // made once per view (a zoom only moves it) and drawn without smoothing.
+  raster: (c) => {
+    if (c.kind.x === "log" || c.kind.y === "log" || c.kind.x === "category" || c.kind.y === "category") {
+      throw new Error("raster(): x and y must be number or time axes, not log or category axes");
+    }
+    const { x, y } = c.grid;
+    const uri = (c.cache.png ??= rasterPNG(c));
+    return [
+      (index, scales, values, dimensions, context) => {
+        const doc = context.document;
+        const el = (name, attrs) => {
+          const e = doc.createElementNS("http://www.w3.org/2000/svg", name);
+          for (const [k, v] of Object.entries(attrs)) if (v !== undefined) e.setAttribute(k, v);
+          return e;
+        };
+        const { marginLeft: ml, marginTop: mt, marginRight: mr, marginBottom: mb, width, height } = dimensions;
+        const [x0, x1] = [scales.x(x.edges[0]), scales.x(x.edges[1])];
+        const [y0, y1] = [scales.y(y.edges[1]), scales.y(y.edges[0])];
+        const frame = el("svg", { "aria-label": "raster", x: ml, y: mt, width: width - ml - mr, height: height - mt - mb, overflow: "hidden" });
+        const image = { href: uri, x: x0 - ml, y: y0 - mt, width: x1 - x0, height: y1 - y0, preserveAspectRatio: "none" };
+        // No smoothing: resvg knows optimizeSpeed (the last declaration wins there); browsers take pixelated, or
+        // optimizeSpeed as its legacy alias.
+        const style = { "image-rendering": "optimizeSpeed", style: "image-rendering:pixelated;image-rendering:optimizeSpeed", opacity: c.options.alpha };
+        frame.append(el("image", { ...image, ...style }));
+        return frame;
+      },
+    ];
+  },
+
   // One Tukey box per category, in the series color: a light box from q1 to q3, a bold median, whiskers with caps,
   // and the outliers as small dots (they blend with jittered points drawn on top).
   box: (c) => {
@@ -255,6 +286,26 @@ function dodgeRender(c) {
     for (const k of keys) if (values[k]) moved[k] = Float64Array.from(values[k], (v, i) => v + frac[i] * step);
     return next(index, scales, moved, dimensions, context);
   };
+}
+
+// The RGBA pixels of a raster (row 0 at the top, the highest y), from the fill colors; a missing value is
+// transparent.
+function rasterPNG(c) {
+  const { x, y } = c.grid;
+  const [values, colors] = [c.v("fill"), c.fills(null)];
+  const rgba = new Uint8Array(x.n * y.n * 4);
+  const bytes = new Map();
+  for (let k = 0; k < values.length; k++) {
+    const [i, j] = [x.index[k], y.index[k]];
+    if (i < 0 || j < 0 || values[k] === null) continue;
+    const css = Array.isArray(colors) ? colors[k] : colors;
+    if (!bytes.has(css)) {
+      const q = d3.rgb(css);
+      bytes.set(css, [q.r, q.g, q.b, Math.round((Number.isNaN(q.opacity) ? 1 : q.opacity) * 255)]);
+    }
+    rgba.set(bytes.get(css), ((y.n - 1 - j) * x.n + i) * 4);
+  }
+  return pngDataURI(x.n, y.n, rgba);
 }
 
 // text(repel=true): each label moves to a free place near its anchor (repel.js), clear of the other labels, of their

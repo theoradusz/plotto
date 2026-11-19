@@ -142,6 +142,11 @@ class Plot:
         """Filled areas from a geometry column (GeoJSON Polygon or MultiPolygon): polygon(fill="households")."""
         return self._layer("polygon", **options)
 
+    def raster(self, **options):
+        """A grid of cells as one image, colored by the fill scale: raster(x="lon", y="lat", fill="intensity").
+        One row per cell center of a regular grid; missing cells are transparent."""
+        return self._layer("raster", **options)
+
     def facet(self, by, **options) -> Plot:
         _need_column(self._s["data"][0], by, "facet()")
         _check_keys(options, GRAMMAR["facet"], "facet()")

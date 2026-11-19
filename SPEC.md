@@ -97,6 +97,7 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 | `text` | x, y, label, color | size, alpha, repel | – | `text`; with `repel`, leader lines (`path`) |
 | `errorbar` | x, ymin, ymax, color | size, alpha, position | dodge | `ruleX` and two caps |
 | `polygon` | geometry, fill, color, tooltip | size, alpha | – | `geo`, through the x and y scales |
+| `raster` | x, y, fill | alpha | the grid of the cells | one `image` (a PNG) in an `svg` clipped to the frame |
 | `box` | x, y, color | alpha (of the box fill, default 0.3) | Tukey box per category (`boxStats` in `stats.js`): quartiles, whiskers to the last values within 1.5 IQR, outliers | `barY` (q1 to q3, outlined in the series color), `tickY` (bold median and whisker caps), `ruleX` (whiskers), `dot` (outliers, in the series color) |
 
 | Option | Values | Meaning |
@@ -115,13 +116,14 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 | `direct` | `true`, `false` (default) | The name of each line at its end (below) |
 | `repel` | `true`, `false` (default) | Text labels move to a free place near their point (below) |
 
-- `color` maps the stroke of lines and the fill of points, bars, areas, rects, tiles and text, and the outline of polygons. `fill` maps the fill of polygons (and rasters).
+- `color` maps the stroke of lines and the fill of points, bars, areas, rects, tiles and text, and the outline of polygons. `fill` maps the fill of polygons and rasters.
 - A line, path or step without `group` has one line per color value. A missing value (`null`) makes a gap.
 - A layer without columns, for example `hline(y=0)`, draws once in each panel.
 - A layer table without the facet column draws in each panel.
 - A statistic runs on the rows of each panel, after the legend filter. Bin edges do not depend on the panel.
 - Dodge of `point`, `segment` and `errorbar`: the band of each category has one slot per color of the plot, in the legend order, so a color has the same place in every category, panel and layer, and the segments of a color meet its points. A color that the legend hides leaves its slot empty. The slots are along the category axis: x, else y (`errorbar` draws vertical bars, so it needs a category x). Dodge needs a category axis and a color mapped to a string column; a constant color takes the center. The caps of an error bar are 30% of the band, or 60% of a slot.
 - `polygon` draws the GeoJSON `Polygon` and `MultiPolygon` geometries of a geometry column, with x as the first coordinate (longitude) and y as the second (latitude). Holes stay empty (even-odd rule). Without `geometry`, it takes the column named `geometry`. `fill` fills the areas (a column, through the fill scale, or a color); `color` is the outline. Without `fill`, it draws outlines in `muted`, 0.6 px; with `fill`, thin outlines (0.5 px) in the `background` color separate the areas. `size` is the outline width; `alpha` the opacity of the fill (or of the outline without fill). The bounding boxes of the geometries train the axis domains. A geometry column goes to `geometry` only.
+- `raster` draws a regular grid of cells (one row per cell center, for example a 1 km mesh of seismic intensity) as one image of one pixel per cell, colored by the fill scale, without smoothing, under the layers after it. The grid step in x and y is the mean of the gaps between neighbouring distinct values over the number of steps that each gap spans (refined three times), so values with 6 significant digits keep their columns; a missing cell, or a `null` fill, is transparent. A value more than a quarter of a step off the grid is an error. The cell edges train the axis domains. x and y must be number or time axes. The PNG is made once per figure and a zoom moves it; Node and the browser write the same bytes.
 - `text(repel=true)` places each label, in row order (put the important ones first), at the first free place around its anchor: right, upper right, lower right, left, upper left, lower left, above, below (0.4 em beside, 0.2 em above or below, beyond a point drawn there), then on rings 0.5 em apart, up to 10 em. A place is free when the label is inside the panel and clear of the labels placed before, of the anchors, of the points of the `point` layers of the panel, of the insets and of the scale bar and north arrow. When no place is free, the label goes to the right of its anchor anyway. A label further than 1.5 em from its anchor gets a thin leader line in `muted`. The placement uses the font metrics (the same in Node and the browser) and runs again at each zoom.
 - Direct labels (`line(direct=true)`): each series (the `group` value, else the `color` value) gets its name right of its last point in view, in its color, darkened (or lightened on a dark background) to a contrast of 3:1 at least. A long name wraps to 2 lines, at most 160 px or 20% of the figure width. Labels that would overlap move apart vertically, and stay in the panel when there is room. Each panel gets a right margin for the longest name; the legend stays unless `theme(legend="none")`.
 
@@ -145,7 +147,7 @@ builder → spec → normalize (spec.js) → views (views.js, stats.js) → scal
 | `number`, `time` | `values` (a list of colors), else `scheme`, else the style scheme | A color ramp |
 | `number`, `time`, with `breaks` | One color per class: `values` (a list of one color per break), else the scheme at the middle of each class | Steps: one box per class |
 
-There are two color scales: `color` (`color()`, the `color` channel) and `fill` (`fill()`, the `fill` channel of `polygon`). They have the same options, each its own legend, and they can map different columns: for example the outage of each area (`fill`) and the class of each town (`color`).
+There are two color scales: `color` (`color()`, the `color` channel) and `fill` (`fill()`, the `fill` channel of `polygon` and `raster`). They have the same options, each its own legend, and they can map different columns: for example the outage of each area (`fill`) and the class of each town (`color`).
 
 - `breaks` (numbers or times that increase) make a binned scale. The classes are `[b0, b1)`, …, `[b(n-1), bn)` and `[bn, ∞)`: one class per break, closed on the left. They depend on the breaks only, so two plots with the same breaks have the same colors. A value below `b0` is `muted` (with `clamp: true`, the first class) and has no legend entry; `null` is `muted`. `labels` (one per break) names the classes. `mid` and a map of `values` do not apply. Breaks on a string column are an error.
 - The steps legend has one box per class, low to high: left to right at the bottom, bottom to top on the right. The break values (format `,~r`, or the time pattern) are at the lower edge of each box; class names (`labels`) are on the boxes.
@@ -294,6 +296,7 @@ Hover:
 | box | The box under the pointer: whiskers, quartiles, median, count and outliers. It wins over the points drawn with it. | – |
 | tile | The value of the cell, and its x and y | Outline of the cell |
 | polygon | The area under the pointer (the top one): its tooltip value as the header, and its fill and color values. A point near the pointer wins. | – |
+| raster | The cell under the pointer: its fill value as the header, and its x and y | – |
 | point, path, errorbar | The nearest point within 40 px. It stays picked until another point is at least 4 px nearer. | Dot |
 
 - The label box is flat and square. Its header has the color of the hovered series. A light color gets dark text; any other color gets white text, on the color darkened until the contrast is at least 4:1. On several series, the header is dark and each row has a color swatch.
@@ -321,6 +324,7 @@ The Node SVG and the browser SVG are the same, except for the numbers of the cli
 
 - Themes are styles and formats with four overrides. There is no `element_*` theming.
 - There are two color scales per plot: `color` and `fill`. Size and shape are constants, not mappings.
+- A raster has one row per cell in the spec (about 30 bytes per cell) and an image of 4 bytes per cell, without compression: crop the grid to the map (90 000 cells make a spec of about 3 MB).
 - A geometry column is JSON in the spec and in the notebook HTML: simplify the geometries first (for example `GeoSeries.simplify` or mapshaper). Each zoom and pan draws every area again.
 - There is no plot composition.
 - More than about 20 000 points make a large SVG: the SVG of 20 000 points is about 1.7 MB.

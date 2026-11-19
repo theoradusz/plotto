@@ -33,13 +33,15 @@ LAYER_DOC = {
     "box": "Box plots of y per x: quartiles, whiskers at 1.5 IQR, outliers.",
     "polygon": "Areas of GeoJSON Polygon and MultiPolygon geometries (holes stay empty), for choropleths and outlines. "
     "Without geometry: the column named geometry. Without fill: outlines only.",
+    "raster": "A regular grid of cells (one row per cell center), drawn as one image colored by the fill scale, for "
+    "example a 1 km mesh of seismic intensity under outlines. Missing cells are transparent.",
 }
 
 CHANNEL_DOC = {
     "x": "Horizontal position",
     "y": "Vertical position",
     "color": "Stroke of lines; fill of points, bars, areas and cells; outline of polygons",
-    "fill": "Fill of polygons (the fill scale, with its own legend)",
+    "fill": "Fill of polygons and rasters (the fill scale, with its own legend)",
     "geometry": "A geometry column: GeoJSON geometries, a GeoDataFrame geometry column, or the geometry of a FeatureCollection",
     "group": "Splits lines and areas without a color",
     "tooltip": "An extra column in the hover label",

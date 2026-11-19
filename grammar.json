@@ -37,7 +37,8 @@
     "text": { "channels": ["x", "y", "label", "color"], "options": ["size", "alpha", "repel"], "requires": ["x", "y", "label"] },
     "errorbar": { "channels": ["x", "ymin", "ymax", "color"], "options": ["size", "alpha", "position"], "requires": ["x", "ymin", "ymax"] },
     "box": { "channels": ["x", "y", "color"], "options": ["alpha"], "requires": ["x", "y"] },
-    "polygon": { "channels": ["geometry", "fill", "color", "tooltip"], "options": ["size", "alpha"], "requires": ["geometry"] }
+    "polygon": { "channels": ["geometry", "fill", "color", "tooltip"], "options": ["size", "alpha"], "requires": ["geometry"] },
+    "raster": { "channels": ["x", "y", "fill"], "options": ["alpha"], "requires": ["x", "y", "fill"] }
   },
   "scales": {
     "x": ["type", "limits", "format", "breaks", "labels"],

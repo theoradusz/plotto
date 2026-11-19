@@ -72,6 +72,7 @@ class Builder {
   errorbar(options) { return this.#layer("errorbar", options); }
   box(options) { return this.#layer("box", options); }
   polygon(options) { return this.#layer("polygon", options); }
+  raster(options) { return this.#layer("raster", options); }
 
   facet(by, options = {}) {
     needColumn(this.#s.data[0], by, "facet()");

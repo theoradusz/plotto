@@ -89,6 +89,7 @@ draw(plot(rows, { x: "time", y: "value", color: "sensor" }).line().facet("indica
 | Maps | `coord("geo")`: x = longitude, y = latitude, equal distance per px, degree labels; `coord("geo", scalebar=True, north=True)` |
 | Distant areas in the same figure | `inset(x=[122.9, 131.4], y=[24.0, 28.6], at=[0.02, 0.6, 0.3, 0.98])` |
 | Labels that do not overlap | `text(label="name", repel=True)` |
+| A grid under the map (1 km intensity mesh) | `raster(data=grid, x="lon", y="lat", fill="intensity")` with `fill(breaks=...)` |
 | Category colors | `color(palette="sakura")`, or `color(values={"a": "red", "b": "#123456"})` |
 | Number colors | `color(scheme="ai")`; diverging: `color(scheme="aiaka", mid=0)` |
 
